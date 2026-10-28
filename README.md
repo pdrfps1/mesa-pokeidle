@@ -45,14 +45,15 @@ Em Espera o jogo sai da tela e a conta continua. Poção e ball podem reagir um 
 
 São quatro baías, o teto de contas. Mudo, economia e a escala valem para a baía em foco. A escala volta para o tamanho automático pelo botão ao lado do controle.
 
-Para abrir a partir do código:
+Para instalar a partir deste repositório, no Windows, dê dois cliques em `instalar.cmd`. Ele instala o Node.js LTS se faltar, baixa as dependências e abre a Mesa.
 
-```bash
-npm install
-npm start
+Pelo terminal, na pasta do repositório:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\instalar.ps1
 ```
 
-`npm run dist` gera `dist-release/Mesa.exe`.
+`npm run dist` gera o `Mesa.exe` portátil.
 
 ## Licença
 
