@@ -39,13 +39,23 @@ function mesaFitZoom(width, height) {
   return Math.round(Math.min(bounds.autoMax, Math.max(bounds.autoMin, fit)) * 100) / 100;
 }
 
+function googleLoginHost(host) {
+  if (host === 'google.com' || host.endsWith('.google.com')) return true;
+  if (host === 'googleapis.com' || host.endsWith('.googleapis.com')) return true;
+  if (host === 'gstatic.com' || host.endsWith('.gstatic.com')) return true;
+  if (host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com')) return true;
+  if (host === 'accounts.youtube.com') return true;
+  return false;
+}
+
 function mesaLiveKind(value) {
   let url;
   try { url = new URL(String(value || '')); } catch { return ''; }
   if (url.protocol !== 'https:') return '';
   const host = url.hostname.toLowerCase();
   if (host === 'pokeidle.io' || host.endsWith('.pokeidle.io')) return 'game';
-  if (host === 'accounts.google.com' || host === 'challenges.cloudflare.com') return 'game';
+  if (host === 'challenges.cloudflare.com' || host.endsWith('.cloudflare.com')) return 'game';
+  if (googleLoginHost(host)) return 'game';
   if (host === 'discord.com' || host.endsWith('.discord.com')) return 'game';
   if (host === 'discordapp.com' || host.endsWith('.discordapp.com')) return 'game';
   return '';
@@ -105,7 +115,15 @@ MESA_CATALOG.normalize = function normalize(input) {
 };
 
 MESA_CATALOG.clampPotion = mesaPotionAt;
+function mesaIsGoogleLoginUrl(value) {
+  let url;
+  try { url = new URL(String(value || '')); } catch { return false; }
+  if (url.protocol !== 'https:') return false;
+  return googleLoginHost(url.hostname.toLowerCase());
+}
+
 MESA_CATALOG.liveKind = mesaLiveKind;
+MESA_CATALOG.isGoogleLoginUrl = mesaIsGoogleLoginUrl;
 MESA_CATALOG.fitZoom = mesaFitZoom;
 MESA_CATALOG.clampScale = mesaScale;
 

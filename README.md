@@ -2,7 +2,7 @@
 
 Mesa é o aplicativo de Windows para jogar [pokeidle.io](https://pokeidle.io/app) em até quatro contas ao mesmo tempo, neste computador. Cada conta fica numa baía, com a sessão guardada localmente. A senha continua na página do jogo.
 
-[Baixar Mesa.exe](https://github.com/pdrfps1/mesa-pokeidle/releases/latest/download/Mesa.exe) · versão 0.3.0 · Windows
+[Baixar Mesa.exe](https://github.com/pdrfps1/mesa-pokeidle/releases/latest/download/Mesa.exe) · versão 0.3.1 · Windows
 
 O Windows pode pedir confirmação na primeira abertura: o executável é portátil e não leva instalador.
 

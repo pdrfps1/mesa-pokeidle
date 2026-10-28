@@ -1,5 +1,7 @@
+const { clearLoginProfile } = require('./game-browser-login');
+
 function registerLiveAccount(deps) {
-  const { ipcMain, session, catalog, isUi } = deps;
+  const { ipcMain, session, catalog, isUi, userData } = deps;
   const fromUi = (event) => typeof isUi === 'function' && isUi(event);
 
   ipcMain.handle('bay:reset', async (event, index) => {
@@ -10,6 +12,9 @@ function registerLiveAccount(deps) {
     await ses.clearStorageData();
     await ses.clearCache();
     try { await ses.clearAuthCache(); } catch { /* sem cache de autenticação */ }
+    if (typeof userData === 'function') {
+      try { clearLoginProfile(userData(), catalog.partitions[bay]); } catch { /* perfil externo indisponível */ }
+    }
     return true;
   });
 }

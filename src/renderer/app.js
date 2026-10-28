@@ -445,6 +445,75 @@ document.addEventListener('keydown', (event) => {
   if (event.key >= '1' && event.key <= '4') select(Number(event.key) - 1);
 });
 
+function showGameLoginHint(message) {
+  if (!ui.googleLoginHint) return;
+  if (!message) {
+    ui.googleLoginHint.hidden = true;
+    ui.googleLoginHint.textContent = '';
+    return;
+  }
+  ui.googleLoginHint.hidden = false;
+  ui.googleLoginHint.textContent = message;
+}
+
+async function onGameLoginOpen(index) {
+  if (!window.mesa || typeof window.mesa.gameLoginOpen !== 'function') return;
+  showGameLoginHint('');
+  let result;
+  try { result = await window.mesa.gameLoginOpen(index); } catch { result = null; }
+  if (result && result.ok) return;
+  if (result && result.error === 'no-browser') {
+    showGameLoginHint('Instale o Microsoft Edge ou o Google Chrome para entrar com o Google.');
+    return;
+  }
+  showGameLoginHint('Não foi possível abrir o navegador. Tente de novo.');
+}
+
+function refreshBayAfterLoginImport(index) {
+  showGameLoginHint('');
+  const bay = live[index];
+  if (!bay) return;
+  bay.phase = cfg.bays[index].open === false ? 'fechada' : 'abrindo';
+  bay.ready = false;
+  paintBay(index);
+}
+
+function showGameLoginImportError(result) {
+  if (!result) {
+    showGameLoginHint('Não foi possível importar o login. Tente de novo.');
+    return;
+  }
+  if (result.reason === 'browser-open') {
+    showGameLoginHint('Feche a janela do navegador de login antes de clicar em «Já entrei».');
+    return;
+  }
+  if (result.message) {
+    showGameLoginHint(result.message);
+    return;
+  }
+  if (result.reason === 'pending') {
+    showGameLoginHint('O login no navegador ainda não terminou. Entre no jogo e tente de novo.');
+    return;
+  }
+  if (result.reason === 'no-browser') {
+    showGameLoginHint('Instale o Microsoft Edge ou o Google Chrome para importar o login.');
+    return;
+  }
+  showGameLoginHint('Não foi possível importar o login. Tente de novo.');
+}
+
+async function onGameLoginImport(index) {
+  if (!window.mesa || typeof window.mesa.gameLoginImport !== 'function') return;
+  showGameLoginHint('');
+  let result;
+  try { result = await window.mesa.gameLoginImport(index); } catch { result = null; }
+  if (result && result.ok) {
+    refreshBayAfterLoginImport(index);
+    return;
+  }
+  showGameLoginImportError(result);
+}
+
 async function forgetBay(index) {
   if (!window.mesa || typeof window.mesa.resetBay !== 'function') return;
   let ok = false;
@@ -499,5 +568,17 @@ function boot() {
     if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.start();
     tuneBays();
     window.mesa.paths().then((info) => { if (info && info.config) ui.path.textContent = info.config; });
+    if (typeof window.mesa.onGameLoginHint === 'function') {
+      window.mesa.onGameLoginHint(({ index, message }) => {
+        if (index === cfg.selected) showGameLoginHint(message);
+      });
+    }
+    if (typeof window.mesa.onGameLoginResult === 'function') {
+      window.mesa.onGameLoginResult((payload) => {
+        if (!payload || payload.index !== cfg.selected) return;
+        if (payload.ok) refreshBayAfterLoginImport(payload.index);
+        else showGameLoginImportError(payload);
+      });
+    }
   });
 }

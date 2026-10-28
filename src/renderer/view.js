@@ -12,6 +12,7 @@ function syncLeave() {
   if (ui.leave.dataset.bay === bay) return;
   ui.leave.dataset.bay = bay;
   disarmLeave();
+  if (typeof showGameLoginHint === 'function') showGameLoginHint('');
 }
 
 function mountAutos() {
@@ -238,10 +239,34 @@ function mount() {
     if (typeof forgetBay === 'function') forgetBay(cfg.selected);
   });
   ui.leaveCancel.addEventListener('click', () => disarmLeave());
+  ui.googleLogin = el('button', 'text-btn', 'Entrar com Google');
+  ui.googleLogin.type = 'button';
+  ui.googleLogin.title = 'Abre o Edge ou o Chrome só desta baía para entrar no jogo';
+  ui.googleLogin.setAttribute('aria-label', 'Entrar com Google nesta baía');
+  ui.googleImport = el('button', 'text-btn', 'Já entrei');
+  ui.googleImport.type = 'button';
+  ui.googleImport.title = 'Copia o login do navegador para esta baía';
+  ui.googleImport.setAttribute('aria-label', 'Importar login do navegador');
+  ui.googleLoginHint = el('p', 'login-browser-hint', '');
+  ui.googleLoginHint.hidden = true;
+  ui.googleLoginHint.setAttribute('aria-live', 'polite');
+  ui.googleLogin.addEventListener('click', () => {
+    if (typeof onGameLoginOpen === 'function') onGameLoginOpen(cfg.selected);
+  });
+  ui.googleImport.addEventListener('click', () => {
+    if (typeof onGameLoginImport === 'function') onGameLoginImport(cfg.selected);
+  });
   const bayTools = el('div', 'control-group');
   bayTools.append(el('span', 'control-label', 'Nesta baía'), ui.mute, ui.eco, scaleBox, reload, ui.igualar);
   const sessionTools = el('div', 'control-group');
-  sessionTools.append(ui.leave, ui.leaveCancel);
+  sessionTools.append(
+    el('span', 'control-label', 'Conta'),
+    ui.googleLogin,
+    ui.googleImport,
+    ui.googleLoginHint,
+    ui.leave,
+    ui.leaveCancel,
+  );
   const navIcon = { Mapa: 'mapa', 'Pokédex': 'pokedex', Depot: 'depot', Boss: 'boss', Market: 'market' };
   for (const label of MESA_CATALOG.nav) {
     const button = el('button', 'text-btn', label);
@@ -384,6 +409,7 @@ function mount() {
   if (typeof mountLiveBonus === 'function') mountLiveBonus(ui.ajustesView);
   if (typeof mountExtras === 'function') mountExtras(ui.ajustesView);
   if (typeof mountPerf === 'function') mountPerf(ui.ajustesView);
+  if (typeof mountUpdates === 'function') mountUpdates(ui.ajustesView);
   const note = el('div', 'setting');
   const noteText = el('div');
   ui.path = el('p', 'path', 'Disponível no aplicativo.');

@@ -7,9 +7,16 @@ const { chromeUserAgent } = require('../shared/chrome-ua');
 const { registerLiveAccount } = require('./live-account');
 const { registerLive, start: startLive, stop: stopLive } = require('./live/service');
 const { installGuest } = require('./live-login');
+const {
+  registerGameBrowserLogin,
+  openLoginBrowser,
+  startImportWatch,
+} = require('./game-browser-login');
+const { findSystemBrowser } = require('./browser/find-browser');
 const { bundleGamePreload, loadPageSource, installHuntPageHook } = require('./hunt-hook');
 const { registerHuntReference } = require('./hunt-reference');
 const { createPerfSampler } = require('./perf-sampler');
+const { registerUpdater } = require('./updater');
 
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 
@@ -23,10 +30,8 @@ const HUNT_PAGE_SOURCE = loadPageSource(path.join(__dirname, '../preload'));
 app.commandLine.appendSwitch('enable-low-end-device-mode');
 app.commandLine.appendSwitch('silent-debugger-extension-api');
 app.commandLine.appendSwitch('js-flags', '--max-old-space-size=1024');
-app.commandLine.appendSwitch(
-  'disable-blink-features',
-  'WebAuth,DocumentPictureInPictureAPI',
-);
+const DISABLE_BLINK_FEATURES = 'DocumentPictureInPictureAPI,WebAuthentication';
+app.commandLine.appendSwitch('disable-blink-features', DISABLE_BLINK_FEATURES);
 app.commandLine.appendSwitch(
   'disable-features',
   'CalculateNativeWinOcclusion,TranslateUI,MediaRouter,OptimizationHints,AutofillServerCommunication,BackForwardCache,WebBluetooth',
@@ -44,6 +49,33 @@ let uiWindow = null;
 let deskOpen = true;
 let windowHot = true;
 let deskFocus = null;
+const googleLoginInterceptAt = new Map();
+const GOOGLE_LOGIN_HINT = 'O login do Google não abre dentro da Mesa. Use «Entrar com Google», entre no jogo no navegador e feche-o — o login entra sozinho nesta baía. Se não entrar, use «Já entrei».';
+const loginBrowserDeps = () => ({
+  catalog,
+  userData: () => app.getPath('userData'),
+  browserExe: findSystemBrowser(),
+});
+
+function notifyGoogleLoginHint(index) {
+  if (!uiWindow || uiWindow.isDestroyed()) return;
+  const wc = uiWindow.webContents;
+  if (!wc || wc.isDestroyed()) return;
+  wc.send('game-login:hint', { index, message: GOOGLE_LOGIN_HINT });
+}
+
+function onBlockedGoogleLogin(contents) {
+  const index = catalog.partitions.findIndex((part) => session.fromPartition(part) === contents.session);
+  if (index < 0) return;
+  const now = Date.now();
+  const last = googleLoginInterceptAt.get(index) || 0;
+  if (now - last < 2500) return;
+  googleLoginInterceptAt.set(index, now);
+  const opened = openLoginBrowser(loginBrowserDeps(), index, (bay) => {
+    if (typeof gameLoginWatchBay === 'function') gameLoginWatchBay(bay);
+  });
+  if (opened && opened.ok) notifyGoogleLoginHint(index);
+}
 
 function focusWindow() {
   const wins = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
@@ -87,7 +119,13 @@ registerHuntReference(ipcMain, isUi);
 
 const CHROME_UA = chromeUserAgent();
 app.userAgentFallback = CHROME_UA;
-const ALLOWED_PERMISSIONS = new Set(['fullscreen', 'clipboard-sanitized-write', 'pointerLock']);
+const ALLOWED_PERMISSIONS = new Set([
+  'fullscreen',
+  'clipboard-sanitized-write',
+  'pointerLock',
+  'storage-access',
+  'top-level-storage-access',
+]);
 const TRACKERS = [
   '*://*.googletagmanager.com/*',
   '*://*.google-analytics.com/*',
@@ -191,6 +229,13 @@ ipcMain.on('cfg:flush', (event, data, ticket) => {
   try { event.returnValue = isUi(event) ? acceptCfg(data, ticket) : false; } catch { event.returnValue = false; }
 });
 ipcMain.handle('app:paths', (event) => (isUi(event) ? { config: cfgFile() } : null));
+ipcMain.handle('app:open-external', (event, url) => {
+  if (!isUi(event) || typeof url !== 'string') return false;
+  let parsed;
+  try { parsed = new URL(url); } catch { return false; }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') return false;
+  try { shell.openExternal(parsed.href); return true; } catch { return false; }
+});
 
 ipcMain.on('bay:prefs', (event) => {
   const cfg = readCfg() || catalog.normalize({});
@@ -313,7 +358,7 @@ if (gotLock) app.on('web-contents-created', (_event, contents) => {
       prefs.webSecurity = true;
       prefs.allowRunningInsecureContent = false;
       prefs.experimentalFeatures = false;
-      prefs.disableBlinkFeatures = 'DocumentPictureInPictureAPI,WebAuth';
+      prefs.disableBlinkFeatures = DISABLE_BLINK_FEATURES;
     });
   }
 
@@ -329,6 +374,8 @@ if (gotLock) app.on('web-contents-created', (_event, contents) => {
       sessionKind,
       hostKind,
       shell,
+      isGoogleLoginUrl: catalog.isGoogleLoginUrl,
+      onBlockedGoogleLogin,
     });
   }
 });
@@ -366,7 +413,39 @@ if (gotLock) registerLiveAccount({
   session,
   catalog,
   isUi,
+  userData: () => app.getPath('userData'),
 });
+
+let gameLoginWatchBay = null;
+
+function notifyGameLoginResult(index, payload) {
+  if (!uiWindow || uiWindow.isDestroyed()) return;
+  const wc = uiWindow.webContents;
+  if (!wc || wc.isDestroyed()) return;
+  wc.send('game-login:result', { index, ...payload });
+}
+
+if (gotLock) {
+  registerGameBrowserLogin({
+    ipcMain,
+    session,
+    catalog,
+    webContents,
+    isUi,
+    userData: () => app.getPath('userData'),
+    chromeUserAgent: () => CHROME_UA,
+    notifyLoginResult: notifyGameLoginResult,
+  });
+  gameLoginWatchBay = (bay) => startImportWatch({
+    catalog,
+    userData: () => app.getPath('userData'),
+    browserExe: findSystemBrowser(),
+    session,
+    webContents,
+    chromeUserAgent: () => CHROME_UA,
+    notifyLoginResult: notifyGameLoginResult,
+  }, bay);
+}
 
 if (gotLock) registerLive({
   ipcMain,
@@ -378,3 +457,5 @@ if (gotLock) registerLive({
   getUiWindow: () => uiWindow,
   userData: () => app.getPath('userData'),
 });
+
+if (gotLock) registerUpdater({ ipcMain, app, isUi });
