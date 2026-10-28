@@ -40,11 +40,16 @@ var MesaAutoHunt = (function () {
     return allowed;
   }
 
+  const compact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
+
   function refreshBest(index) {
     const bay = live[index];
     const hunt = bay && bay.hunt;
-    if (!guide || !hunt) {
-      if (bay) bay.huntBest = null;
+    if (!bay || !guide || !hunt || !hunt.ready) {
+      if (bay) {
+        bay.huntBest = null;
+        bay.huntTop = null;
+      }
       return;
     }
     const account = accountFrom(hunt);
@@ -53,7 +58,21 @@ var MesaAutoHunt = (function () {
       bay.huntSignature = sig;
       bay.huntEstimates = MesaHuntRank.estimate(account, guide);
     }
-    bay.huntBest = MesaHuntRank.pick(bay.huntEstimates || [], hunt.huntSlug, allowedSlugs(hunt));
+    const allowed = allowedSlugs(hunt);
+    let top = null;
+    for (const item of bay.huntEstimates || []) {
+      if (!item || !item.hunt || !allowed.has(item.hunt.s)) continue;
+      if (!top || item.xpTrainerPerHour > top.xpTrainerPerHour) top = item;
+    }
+    bay.huntTop = top ? { slug: top.hunt.s, name: top.hunt.n, xp: top.xpTrainerPerHour, gold: top.goldPerHour } : null;
+    bay.huntBest = MesaHuntRank.pick(bay.huntEstimates || [], hunt.huntSlug, allowed);
+  }
+
+  function line(index) {
+    const bay = live[index];
+    const top = bay && bay.huntTop;
+    if (!bay || !bay.loggedIn || !top || !top.name) return '';
+    return `${top.name} · ${compact.format(top.xp)} XP/h · ${compact.format(top.gold)} ouro/h`;
   }
 
   function pump(index) {
@@ -133,7 +152,11 @@ var MesaAutoHunt = (function () {
   }
 
   function tick() {
-    for (let index = 0; index < MESA_CATALOG.bays; index += 1) pump(index);
+    for (let index = 0; index < MESA_CATALOG.bays; index += 1) {
+      refreshBest(index);
+      pump(index);
+      if (typeof paintBay === 'function') paintBay(index);
+    }
     paint();
   }
 
@@ -182,7 +205,9 @@ var MesaAutoHunt = (function () {
         bay.huntRetryAt = Date.now() + CONFIRM_MS;
       }
     }
+    refreshBest(index);
     pump(index);
+    if (typeof paintBay === 'function') paintBay(index);
     paint();
   }
 
@@ -192,6 +217,7 @@ var MesaAutoHunt = (function () {
     bay.hunt = null;
     bay.huntPending = null;
     bay.huntBest = null;
+    bay.huntTop = null;
     bay.huntEstimates = null;
     bay.huntSignature = '';
     bay.huntWant = '';
@@ -199,6 +225,7 @@ var MesaAutoHunt = (function () {
     bay.huntRetryAt = 0;
     bay.huntHoldUntil = 0;
     paint();
+    if (typeof paintBay === 'function') paintBay(index);
   }
 
   function apply(index, want) {
@@ -225,7 +252,7 @@ var MesaAutoHunt = (function () {
     setInterval(tick, 1000);
   }
 
-  return { start, ingest, clear, apply, paint, pump };
+  return { start, ingest, clear, apply, paint, pump, line };
 }());
 
 function applyAutoHunt(index, want) {

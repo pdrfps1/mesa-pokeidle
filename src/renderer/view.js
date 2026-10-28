@@ -97,9 +97,16 @@ function mount() {
   ui.ajustesBtn.title = 'Ajustes';
   ui.ajustesBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.8 4h12.4M1.8 8h12.4M1.8 12h12.4" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="5" cy="4" r="1.6" fill="#171719" stroke="currentColor" stroke-width="1.5"/><circle cx="11" cy="8" r="1.6" fill="#171719" stroke="currentColor" stroke-width="1.5"/><circle cx="7" cy="12" r="1.6" fill="#171719" stroke="currentColor" stroke-width="1.5"/></svg>';
   ui.ajustesBtn.append(el('span', null, 'Ajustes'));
-  ui.mesaBtn.addEventListener('click', () => { cfg.view = 'mesa'; paint(); });
-  ui.ajustesBtn.addEventListener('click', () => { cfg.view = 'ajustes'; paint(); });
-  rail.append(mark, ui.mesaBtn, el('div', 'rail-spacer'), ui.ajustesBtn);
+  ui.mesaBtn.addEventListener('click', () => { cfg.view = 'mesa'; paint(); tuneBays(); });
+  ui.esperaBtn = el('button', 'rail-btn');
+  ui.esperaBtn.type = 'button';
+  ui.esperaBtn.setAttribute('aria-label', 'Espera');
+  ui.esperaBtn.title = 'Espera';
+  ui.esperaBtn.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2h1.7v9.6H5zM9.3 3.2H11v9.6H9.3z" fill="currentColor"/></svg>';
+  ui.esperaBtn.append(el('span', null, 'Espera'));
+  ui.esperaBtn.addEventListener('click', () => { cfg.view = 'espera'; paint(); tuneBays(); });
+  ui.ajustesBtn.addEventListener('click', () => { cfg.view = 'ajustes'; paint(); tuneBays(); });
+  rail.append(mark, ui.mesaBtn, ui.esperaBtn, el('div', 'rail-spacer'), ui.ajustesBtn);
 
   const canvas = el('main', 'canvas');
   const heading = el('div');
@@ -256,6 +263,8 @@ function mount() {
     const card = el('article', 'bay');
     const top = el('div', 'bay-top');
     const name = el('span', 'bay-name', `Baía ${index + 1}`);
+    const huntHint = el('span', 'bay-hunt', '');
+    huntHint.hidden = true;
     const status = el('span', 'bay-status', 'sem sessão');
     const stats = el('div', 'bay-stats');
     const level = el('b', 'num', '\u2013');
@@ -314,7 +323,7 @@ function mount() {
       input.addEventListener('blur', () => commit(false));
     });
     const bayId = el('div', 'bay-id');
-    bayId.append(name, status);
+    bayId.append(name, huntHint, status);
     const actions = el('div', 'bay-actions');
     actions.append(openBtn, closeBtn, awayBtn, rename);
     const head = el('div', 'bay-head');
@@ -332,7 +341,7 @@ function mount() {
     const empty = el('p', 'bay-empty', 'Aguardando a vez nesta abertura.');
     stage.append(empty);
     card.append(top, stage);
-    ui.bays.push({ root: card, name, status, level, xp, gold, ram, stage, empty, rename, openBtn, closeBtn, awayBtn });
+    ui.bays.push({ root: card, name, huntHint, status, level, xp, gold, ram, stage, empty, rename, openBtn, closeBtn, awayBtn });
     ui.baysBox.append(card);
   }
   const toolbar = el('div', 'toolbar');
@@ -373,6 +382,7 @@ function mount() {
     ui.ajustesView.append(row);
   }
   if (typeof mountExtras === 'function') mountExtras(ui.ajustesView);
+  if (typeof mountPerf === 'function') mountPerf(ui.ajustesView);
   const note = el('div', 'setting');
   const noteText = el('div');
   ui.path = el('p', 'path', 'Disponível no aplicativo.');
@@ -384,7 +394,10 @@ function mount() {
   note.append(noteText);
   ui.ajustesView.append(note);
 
-  canvas.append(heading, ui.finding, kpis, ui.mesaView, ui.ajustesView);
+  ui.esperaView = el('section', 'view standby');
+  if (typeof mountStandby === 'function') mountStandby(ui.esperaView);
+
+  canvas.append(heading, ui.finding, kpis, ui.mesaView, ui.esperaView, ui.ajustesView);
   if (typeof watchBayFrames === 'function') watchBayFrames();
   root.append(rail, canvas);
   paint();

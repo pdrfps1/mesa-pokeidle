@@ -134,7 +134,7 @@ function pushPrefs() {
 }
 
 function tuneBays() {
-  if (window.mesa && window.mesa.tune) window.mesa.tune(cfg.selected);
+  if (window.mesa && window.mesa.tune) window.mesa.tune(cfg.selected, cfg.view !== 'ajustes' && cfg.view !== 'espera');
 }
 
 function setChecked(node, on) {
@@ -172,10 +172,18 @@ function paintBay(index) {
   const onGrid = cfg.bays[index].placed !== false;
   bay.root.hidden = !onGrid;
   if (bay.awayBtn) bay.awayBtn.disabled = cfg.bays.filter((item) => item.placed !== false).length <= 1;
-  if (!onGrid) return;
+  if (!onGrid) {
+    if (typeof paintStandby === 'function') paintStandby();
+    return;
+  }
   const status = statusOf(index);
   bay.root.classList.toggle('is-selected', cfg.selected === index);
   if (!live[index].editing) bay.name.textContent = titleOf(index);
+  if (bay.huntHint) {
+    const hint = typeof MesaAutoHunt !== 'undefined' && MesaAutoHunt.line ? MesaAutoHunt.line(index) : '';
+    bay.huntHint.hidden = !hint;
+    bay.huntHint.textContent = hint;
+  }
   bay.status.textContent = status.word;
   bay.status.dataset.tone = status.tone;
   bay.status.classList.toggle('is-alert', status.alert);
@@ -185,7 +193,8 @@ function paintBay(index) {
   bay.gold.textContent = live[index].loggedIn && live[index].gold ? live[index].gold : '\u2013';
   bay.ram.textContent = live[index].ram == null ? '\u2013' : `${live[index].ram} MB`;
   bay.rename.hidden = cfg.selected !== index;
-  bay.root.setAttribute('aria-label', `Baía ${index + 1}, ${titleOf(index)}, ${status.word}`);
+  const hint = bay.huntHint && !bay.huntHint.hidden ? bay.huntHint.textContent : '';
+  bay.root.setAttribute('aria-label', `Baía ${index + 1}, ${titleOf(index)}, ${status.word}${hint ? `, ${hint}` : ''}`);
   const closed = cfg.bays[index].open === false;
   if (bay.openBtn) bay.openBtn.hidden = !closed;
   if (bay.closeBtn) bay.closeBtn.hidden = closed;
@@ -194,6 +203,7 @@ function paintBay(index) {
     bay.empty.hidden = false;
     bay.empty.textContent = 'Baía fechada. O login continua guardado nesta baía.';
     if (webviews[index]) webviews[index].style.visibility = 'hidden';
+    if (typeof paintStandby === 'function') paintStandby();
     return;
   }
   const waiting = live[index].phase !== 'jogo';
@@ -204,21 +214,23 @@ function paintBay(index) {
   else if (!window.mesa) bay.empty.textContent = 'O jogo entra neste quadro quando a mesa roda no aplicativo.';
   else if (live[index].phase === 'fila') bay.empty.textContent = 'Aguardando a vez nesta abertura.';
   else bay.empty.textContent = 'Abrindo o jogo. Entre com a conta local.';
+  if (typeof paintStandby === 'function') paintStandby();
 }
 
 function paint() {
-  const onMesa = cfg.view !== 'ajustes';
-  ui.mesaBtn.classList.toggle('is-active', onMesa);
-  ui.ajustesBtn.classList.toggle('is-active', !onMesa);
-  if (onMesa) {
-    ui.mesaBtn.setAttribute('aria-current', 'page');
-    ui.ajustesBtn.removeAttribute('aria-current');
-  } else {
-    ui.ajustesBtn.setAttribute('aria-current', 'page');
-    ui.mesaBtn.removeAttribute('aria-current');
-  }
-  ui.mesaView.hidden = cfg.view === 'ajustes';
-  ui.ajustesView.hidden = cfg.view !== 'ajustes';
+  const view = cfg.view === 'ajustes' || cfg.view === 'espera' ? cfg.view : 'mesa';
+  ui.mesaBtn.classList.toggle('is-active', view === 'mesa');
+  if (ui.esperaBtn) ui.esperaBtn.classList.toggle('is-active', view === 'espera');
+  ui.ajustesBtn.classList.toggle('is-active', view === 'ajustes');
+  [ui.mesaBtn, ui.esperaBtn, ui.ajustesBtn].forEach((button) => {
+    if (!button) return;
+    button.removeAttribute('aria-current');
+  });
+  const current = view === 'espera' ? ui.esperaBtn : (view === 'ajustes' ? ui.ajustesBtn : ui.mesaBtn);
+  if (current) current.setAttribute('aria-current', 'page');
+  ui.mesaView.hidden = view !== 'mesa';
+  if (ui.esperaView) ui.esperaView.hidden = view !== 'espera';
+  ui.ajustesView.hidden = view !== 'ajustes';
   ui.baysBox.dataset.layout = cfg.layout;
   for (const auto of MESA_CATALOG.autos) setChecked(ui.autos[auto.id], autoOn(cfg.selected, auto.id));
   setChecked(ui.mute, cfg.bays[cfg.selected].muted);
@@ -241,6 +253,7 @@ function paint() {
   if (typeof paintZoom === 'function') paintZoom();
   if (typeof paintSlots === 'function') paintSlots();
   if (typeof syncLeave === 'function') syncLeave();
+  if (typeof paintStandby === 'function') paintStandby();
 }
 
 function paintPotion() {

@@ -1,0 +1,10 @@
+---
+description: O revisor de código revisa o diff staged antes de cada commit
+alwaysApply: true
+---
+
+# Revisão antes do commit
+
+Antes de qualquer `git commit`, chame o subagent `revisor-codigo` com `model: composer-2.5` no diff já staged.
+
+O hook bloqueia o commit sem carimbo. Carimbe com `node .cursor/hooks/revisar-antes-do-commit.js --carimbar`, no diretório deste repositório, só se a revisão não tiver achado obrigatório. Com achado obrigatório, não commite.

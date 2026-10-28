@@ -1,3 +1,54 @@
+const FRAME_GAP_MS = 100;
+
+function economyOn() {
+  const root = document.documentElement;
+  return !!(root && root.classList.contains('modo-economia'));
+}
+
+function installFrameCap() {
+  const nativeFrame = window.requestAnimationFrame.bind(window);
+  const nativeCancel = window.cancelAnimationFrame.bind(window);
+  let last = -FRAME_GAP_MS;
+  let seq = 0;
+  const pending = new Map();
+
+  window.requestAnimationFrame = function (callback) {
+    if (typeof callback !== 'function') return nativeFrame(callback);
+    const id = ++seq;
+    if (!economyOn()) {
+      const rafId = nativeFrame((time) => {
+        pending.delete(id);
+        callback(time);
+      });
+      pending.set(id, { rafId, timer: 0 });
+      return id;
+    }
+    const wait = Math.max(0, FRAME_GAP_MS - (performance.now() - last));
+    const timer = window.setTimeout(() => {
+      const entry = pending.get(id);
+      if (!entry) return;
+      entry.timer = 0;
+      entry.rafId = nativeFrame((time) => {
+        pending.delete(id);
+        last = time;
+        callback(time);
+      });
+    }, wait);
+    pending.set(id, { rafId: 0, timer });
+    return id;
+  };
+
+  window.cancelAnimationFrame = function (id) {
+    const entry = pending.get(id);
+    if (!entry) return;
+    pending.delete(id);
+    if (entry.timer) window.clearTimeout(entry.timer);
+    if (entry.rafId) nativeCancel(entry.rafId);
+  };
+}
+
+installFrameCap();
+
 const reader = createHuntReader();
 const state = reader.state;
 const nativeSend = WebSocket.prototype.send;

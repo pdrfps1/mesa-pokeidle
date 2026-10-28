@@ -22,30 +22,84 @@ function loadPageSource(preloadDir) {
 
 function installHuntPageHook(contents, source) {
   if (!contents || contents.isDestroyed() || !source) return;
-  let hookReady = false;
+  let arming = false;
+  let ready = false;
+  let broken = false;
+  let pass = false;
   let queued = '';
-  try { contents.debugger.attach('1.3'); } catch { return; }
-  contents.debugger.on('message', () => {});
-  const ready = contents.debugger.sendCommand('Page.enable')
-    .then(() => contents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
-      source,
-      runImmediately: true,
-    }))
-    .then(() => true, () => false);
+
+  function detachQuiet() {
+    ready = false;
+    try {
+      if (contents.isDestroyed() || !contents.debugger.isAttached()) return;
+      contents.debugger.detach();
+    } catch { /* já solto */ }
+  }
+
+  function arm() {
+    if (broken || contents.isDestroyed()) return Promise.resolve(false);
+    try {
+      if (!contents.debugger.isAttached()) contents.debugger.attach('1.3');
+      return contents.debugger.sendCommand('Page.enable')
+        .then(() => contents.debugger.sendCommand('Page.addScriptToEvaluateOnNewDocument', {
+          source,
+          runImmediately: true,
+        }))
+        .then(() => {
+          ready = true;
+          return true;
+        })
+        .catch(() => false);
+    } catch {
+      broken = true;
+      return Promise.resolve(false);
+    }
+  }
+
+  function release() {
+    if (arming || broken || contents.isDestroyed()) return;
+    arming = true;
+    arm().then((ok) => {
+      arming = false;
+      const next = queued;
+      queued = '';
+      if (contents.isDestroyed()) return;
+      if (!ok) {
+        detachQuiet();
+        if (!next) return;
+        pass = true;
+        contents.loadURL(next).catch(() => { pass = false; });
+        return;
+      }
+      if (!next) return;
+      contents.loadURL(next).catch(() => detachQuiet());
+    }).catch(() => {
+      arming = false;
+      detachQuiet();
+    });
+  }
+
   contents.on('will-navigate', (event, url) => {
-    if (hookReady) return;
     const target = typeof url === 'string' ? url : '';
-    if (!/^https:\/\//.test(target)) return;
+    if (!/^https:\/\//.test(target) || broken || ready) return;
+    if (pass) {
+      pass = false;
+      return;
+    }
     event.preventDefault();
     queued = target;
+    release();
   });
-  ready.then((ok) => {
-    hookReady = true;
-    const next = queued;
-    queued = '';
-    if (!ok || !next || contents.isDestroyed()) return;
-    contents.loadURL(next);
+
+  contents.on('did-finish-load', () => {
+    if (arming || queued || contents.isDestroyed()) return;
+    let url = '';
+    try { url = contents.getURL(); } catch { return; }
+    if (!/^https:\/\//.test(url)) return;
+    detachQuiet();
   });
+
+  release();
 }
 
 module.exports = { bundleGamePreload, loadPageSource, installHuntPageHook };

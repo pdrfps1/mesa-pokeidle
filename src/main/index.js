@@ -8,6 +8,7 @@ const { registerLiveAccount } = require('./live-account');
 const { installGuest } = require('./live-login');
 const { bundleGamePreload, loadPageSource, installHuntPageHook } = require('./hunt-hook');
 const { registerHuntReference } = require('./hunt-reference');
+const { createPerfSampler } = require('./perf-sampler');
 
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 
@@ -41,6 +42,7 @@ let uiContentsId = 0;
 let uiWindow = null;
 let deskOpen = true;
 let windowHot = true;
+let deskFocus = null;
 
 function focusWindow() {
   const wins = BrowserWindow.getAllWindows().filter((win) => !win.isDestroyed());
@@ -202,37 +204,64 @@ ipcMain.on('bay:prefs', (event) => {
   };
 });
 
-function tuneGuests(selected) {
-  const focus = Number.isInteger(selected) ? selected : (readCfg() || catalog.normalize({})).selected;
+function deskIsLive() {
+  return deskOpen && windowHot && !!(uiWindow && !uiWindow.isDestroyed());
+}
+
+function tuneGuests(selected, playing) {
+  if (playing === true || playing === false) deskOpen = playing;
+  if (Number.isInteger(selected)) deskFocus = selected;
+  const focus = Number.isInteger(deskFocus) ? deskFocus : (readCfg() || catalog.normalize({})).selected;
+  const liveDesk = deskIsLive();
   for (const contents of webContents.getAllWebContents()) {
     if (contents.isDestroyed() || contents.getType() !== 'webview') continue;
     const index = catalog.partitions.findIndex((part) => session.fromPartition(part) === contents.session);
     if (index < 0) continue;
-    try { contents.setImageAnimationPolicy(index === focus ? 'animate' : 'noAnimation'); } catch { /* política indisponível */ }
+    const live = liveDesk && index === focus;
+    try { contents.setBackgroundThrottling(!live); } catch { /* política indisponível */ }
+    try { contents.setImageAnimationPolicy(live ? 'animate' : 'noAnimation'); } catch { /* política indisponível */ }
   }
 }
 
-ipcMain.on('bay:tune', (event, selected) => {
-  if (isUi(event)) tuneGuests(selected);
+function bindWindowHeat(win) {
+  const cool = () => {
+    windowHot = false;
+    tuneGuests();
+  };
+  const warm = () => {
+    windowHot = true;
+    tuneGuests();
+  };
+  win.on('minimize', cool);
+  win.on('hide', cool);
+  win.on('restore', warm);
+  win.on('show', warm);
+}
+
+ipcMain.on('bay:tune', (event, selected, playing) => {
+  if (isUi(event)) tuneGuests(Number.isInteger(selected) ? selected : undefined, playing);
 });
 
-ipcMain.handle('metrics:get', (event) => {
-  if (!isUi(event)) return [];
-  const byPid = new Map(app.getAppMetrics().map((metric) => [metric.pid, metric.memory.workingSetSize / 1024]));
-  return catalog.partitions.map((part) => {
-    const ses = session.fromPartition(part);
-    const pids = new Set();
-    for (const contents of webContents.getAllWebContents()) {
-      try {
-        if (contents.isDestroyed() || contents.getType() !== 'webview' || contents.session !== ses) continue;
-        pids.add(contents.getOSProcessId());
-      } catch { /* o processo já saiu */ }
-    }
-    let mb = 0;
-    for (const pid of pids) mb += byPid.get(pid) || 0;
-    return Math.round(mb);
-  });
+const perf = createPerfSampler({
+  app,
+  webContents,
+  session,
+  catalog,
+  scene: () => ({
+    window: windowHot ? 'aberta' : 'minimizada',
+    view: deskOpen ? 'mesa' : 'ajustes',
+  }),
+  uiPid: () => {
+    try {
+      if (!uiWindow || uiWindow.isDestroyed()) return 0;
+      return uiWindow.webContents.getOSProcessId();
+    } catch { return 0; }
+  },
 });
+
+ipcMain.handle('metrics:get', (event) => (isUi(event) ? perf.ramByBay() : []));
+ipcMain.handle('perf:report', (event) => (isUi(event) ? perf.summarize() : null));
+ipcMain.handle('perf:reset', (event) => (isUi(event) ? perf.reset() : null));
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -256,6 +285,8 @@ function createWindow() {
     },
   });
   uiContentsId = win.webContents.id;
+  uiWindow = win;
+  bindWindowHeat(win);
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -286,14 +317,13 @@ if (gotLock) app.on('web-contents-created', (_event, contents) => {
   }
 
   if (contents.getType() === 'webview') {
-    contents.setBackgroundThrottling(false);
+    try { contents.setBackgroundThrottling(true); } catch { /* política indisponível */ }
     const index = catalog.partitions.findIndex((part) => session.fromPartition(part) === contents.session);
     if (index >= 0) {
-      const focus = (readCfg() || catalog.normalize({})).selected;
       try { contents.setZoomMode('isolated'); } catch { /* política indisponível */ }
-      try { contents.setImageAnimationPolicy(index === focus ? 'animate' : 'noAnimation'); } catch { /* política indisponível */ }
       installHuntPageHook(contents, HUNT_PAGE_SOURCE);
     }
+    tuneGuests();
     installGuest(contents, {
       sessionKind,
       hostKind,
@@ -306,6 +336,7 @@ if (gotLock) app.whenReady().then(() => {
   const saved = readCfg();
   const blockTrackers = !!(saved || {}).trackers;
   for (const part of catalog.partitions) prepareSession(part, blockTrackers);
+  perf.start();
   createWindow();
 });
 

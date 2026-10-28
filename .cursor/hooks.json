@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "node .cursor/hooks/revisar-antes-do-commit.js",
+        "matcher": "\\bgit(?:\\.exe)?\\b[\\s\\S]*\\bcommit\\b",
+        "failClosed": true,
+        "timeout": 30
+      }
+    ]
+  }
+}
