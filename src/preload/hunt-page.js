@@ -57,7 +57,26 @@ let candidate = null;
 let confirmed = null;
 let lastMark = '';
 let pendingReport = null;
+const liveQueue = [];
 let generation = Date.now();
+
+function emitLiveFromEstado(estado) {
+  const patch = livePatchFromEstado(estado);
+  if (!patch) return;
+  const api = window.__mesaHunt;
+  if (api && typeof api.live === 'function') {
+    api.live(patch);
+    return;
+  }
+  if (liveQueue.length >= 30) liveQueue.shift();
+  liveQueue.push(patch);
+}
+
+function flushLiveQueue() {
+  const api = window.__mesaHunt;
+  if (!api || typeof api.live !== 'function') return;
+  while (liveQueue.length) api.live(liveQueue.shift());
+}
 
 function bump() {
   generation = Math.max(Date.now(), generation + 1);
@@ -151,12 +170,15 @@ function arm(ws) {
       reader.applyEstado(frame.estado, true);
       reader.takeHunts(frame.hunts);
       if (state.huntSlug && !state.huntName) state.huntName = reader.nameFor(state.huntSlug);
+      emitLiveFromEstado(frame.estado);
       publish();
       return;
     }
     if (ws !== confirmed) return;
-    if (frame.t === 'estado') reader.applyEstado(frame.estado, false);
-    else if (frame.t === 'batalha') reader.applyBattle(frame);
+    if (frame.t === 'estado') {
+      reader.applyEstado(frame.estado, false);
+      emitLiveFromEstado(frame.estado);
+    } else if (frame.t === 'batalha') reader.applyBattle(frame);
     else return;
     publish();
   });
@@ -187,6 +209,7 @@ WebSocket.prototype.send = function (data) {
 setInterval(() => {
   const api = window.__mesaHunt;
   if (!api) return;
+  flushLiveQueue();
   if (pendingReport && typeof api.report === 'function') {
     const queued = pendingReport;
     pendingReport = null;

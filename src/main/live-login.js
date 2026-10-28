@@ -30,4 +30,4 @@ function installGuest(contents, deps) {
   });
 }
 
-module.exports = { installGuest };
+module.exports = { installGuest, openOutside };

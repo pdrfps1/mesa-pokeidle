@@ -152,9 +152,17 @@ function installHuntBridge(ipc) {
   });
   ipc.on('hunt-cancel', () => { queued = ''; });
 
+  function acceptLive(raw) {
+    let clean;
+    try { clean = sanitizeLivePatch(raw); } catch { return; }
+    if (!clean) return;
+    try { ipc.send('live:frame', clean); } catch { /* a baía está fechando */ }
+  }
+
   try {
     contextBridge.exposeInMainWorld('__mesaHunt', {
       report(raw) { accept(raw); },
+      live(raw) { acceptLive(raw); },
       pull() {
         const slug = queued;
         queued = '';

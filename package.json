@@ -8,7 +8,11 @@
   "main": "src/main/index.js",
   "scripts": {
     "start": "electron . --disable-blink-features=WebAuth,DocumentPictureInPictureAPI",
+    "test": "node --test src/main/live/channels.test.js src/main/live/irc.test.js",
     "dist": "electron-builder --win portable"
+  },
+  "dependencies": {
+    "selfsigned": "^2.4.1"
   },
   "devDependencies": {
     "electron": "^44.5.1",

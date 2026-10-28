@@ -3,7 +3,10 @@ const path = require('path');
 
 function bundleGamePreload(destDir, preloadDir) {
   const target = path.join(destDir, 'game-preload.js');
+  const catalog = fs.readFileSync(path.join(__dirname, '../shared/live-catalog.js'), 'utf8');
   const source = [
+    catalog,
+    '\n',
     fs.readFileSync(path.join(preloadDir, 'hunt-bridge.js'), 'utf8'),
     '\n',
     fs.readFileSync(path.join(preloadDir, 'game.js'), 'utf8'),
@@ -16,8 +19,9 @@ function bundleGamePreload(destDir, preloadDir) {
 
 function loadPageSource(preloadDir) {
   const reader = fs.readFileSync(path.join(preloadDir, 'hunt-page-state.js'), 'utf8');
+  const live = fs.readFileSync(path.join(preloadDir, 'hunt-page-live.js'), 'utf8');
   const socket = fs.readFileSync(path.join(preloadDir, 'hunt-page.js'), 'utf8');
-  return `(function () {\nif (window.__mesaHuntPage) return;\nwindow.__mesaHuntPage = true;\n${reader}\n${socket}\n})();\n`;
+  return `(function () {\nif (window.__mesaHuntPage) return;\nwindow.__mesaHuntPage = true;\n${reader}\n${live}\n${socket}\n})();\n`;
 }
 
 function installHuntPageHook(contents, source) {

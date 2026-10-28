@@ -5,6 +5,7 @@ const fs = require('fs');
 const catalog = require('../shared/catalog');
 const { chromeUserAgent } = require('../shared/chrome-ua');
 const { registerLiveAccount } = require('./live-account');
+const { registerLive, start: startLive, stop: stopLive } = require('./live/service');
 const { installGuest } = require('./live-login');
 const { bundleGamePreload, loadPageSource, installHuntPageHook } = require('./hunt-hook');
 const { registerHuntReference } = require('./hunt-reference');
@@ -338,11 +339,13 @@ if (gotLock) app.whenReady().then(() => {
   for (const part of catalog.partitions) prepareSession(part, blockTrackers);
   perf.start();
   createWindow();
+  startLive();
 });
 
 let quitFlushed = false;
 if (gotLock) app.on('before-quit', (event) => {
   if (quitFlushed) return;
+  stopLive();
   event.preventDefault();
   quitFlushed = true;
   const parts = catalog.partitions;
@@ -363,4 +366,15 @@ if (gotLock) registerLiveAccount({
   session,
   catalog,
   isUi,
+});
+
+if (gotLock) registerLive({
+  ipcMain,
+  session,
+  catalog,
+  isUi,
+  app,
+  shell,
+  getUiWindow: () => uiWindow,
+  userData: () => app.getPath('userData'),
 });

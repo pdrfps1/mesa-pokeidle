@@ -381,6 +381,7 @@ function mount() {
     row.append(text, control);
     ui.ajustesView.append(row);
   }
+  if (typeof mountLiveBonus === 'function') mountLiveBonus(ui.ajustesView);
   if (typeof mountExtras === 'function') mountExtras(ui.ajustesView);
   if (typeof mountPerf === 'function') mountPerf(ui.ajustesView);
   const note = el('div', 'setting');
