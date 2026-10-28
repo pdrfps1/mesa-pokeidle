@@ -1,0 +1,34 @@
+{
+  "name": "mesa-pokeidle",
+  "productName": "Mesa",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Mesa local com quatro baías do Pokeidle.",
+  "license": "MIT",
+  "main": "src/main/index.js",
+  "scripts": {
+    "start": "electron . --disable-blink-features=WebAuth,DocumentPictureInPictureAPI",
+    "dist": "electron-builder --win portable"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "local.mesa.pokeidle",
+    "productName": "Mesa",
+    "executableName": "Mesa",
+    "asar": true,
+    "files": [
+      "src/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": "portable",
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "Mesa.exe"
+    }
+  }
+}

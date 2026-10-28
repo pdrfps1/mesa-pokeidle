@@ -1,0 +1,240 @@
+/* Controles da Mesa. O ícone herda a cor do texto.
+   Primário: preenchido claro. Secundário: contorno. Perigo: contorno vermelho.
+   A seleção usa a linha de 1px do acento, na borda que o controle já tem. */
+
+.text-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex: none;
+  min-height: var(--control-height);
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  color: var(--text);
+  background: transparent;
+  white-space: nowrap;
+  line-height: 1.2;
+  box-shadow: inset 0 0 0 1px var(--control);
+  transition: color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.text-btn[hidden] { display: none !important; }
+
+.text-btn:hover {
+  color: var(--text);
+  background: var(--raised);
+  box-shadow: inset 0 0 0 1px #5c5c62;
+}
+
+.text-btn:active {
+  color: var(--text);
+  background: var(--ground);
+  box-shadow: inset 0 0 0 1px #5c5c62;
+}
+
+.text-btn:focus-visible,
+.switch:focus-visible,
+.rail-btn:focus-visible,
+.field:focus-visible,
+.limiar-range:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.text-btn.is-primary {
+  background: var(--text);
+  color: var(--ground);
+  box-shadow: none;
+}
+
+.text-btn.is-primary:hover { background: #e4e4e4; color: var(--ground); }
+.text-btn.is-primary:active { background: #cfcfcf; color: var(--ground); }
+
+.text-btn.is-on {
+  box-shadow:
+    inset 0 1px 0 var(--control),
+    inset 1px 0 0 var(--control),
+    inset -1px 0 0 var(--control),
+    inset 0 -1px 0 var(--accent);
+}
+
+.text-btn.is-on:hover,
+.text-btn.is-on:active {
+  background: var(--raised);
+  box-shadow:
+    inset 0 1px 0 #5c5c62,
+    inset 1px 0 0 #5c5c62,
+    inset -1px 0 0 #5c5c62,
+    inset 0 -1px 0 var(--accent);
+}
+
+.text-btn.is-danger {
+  color: var(--negative);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--negative);
+}
+
+.text-btn.is-danger:hover,
+.text-btn.is-danger:active {
+  color: #ffd0d8;
+  background: #2c1a20;
+  box-shadow: inset 0 0 0 1px var(--negative);
+}
+
+.text-btn.is-armed,
+.text-btn.is-armed:hover,
+.text-btn.is-armed:active {
+  background: #9d2438;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+button.text-btn:disabled,
+button.text-btn:disabled:hover,
+button.text-btn:disabled:active,
+button.text-btn.is-primary:disabled,
+button.text-btn.is-danger:disabled {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--border);
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.switch {
+  border-radius: var(--radius-control);
+  padding: 0 8px;
+  transition: color 140ms ease, background-color 140ms ease;
+}
+
+.switch-track,
+.switch-thumb {
+  transition: left 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.switch:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.switch:hover .switch-track {
+  box-shadow: inset 0 0 0 1px #5e5e64;
+}
+
+.switch:active .switch-track {
+  background: var(--ground);
+}
+
+.switch[aria-checked="true"],
+.switch[aria-checked="true"]:hover {
+  color: var(--text);
+}
+
+.switch[aria-checked="true"] .switch-track,
+.switch[aria-checked="true"]:hover .switch-track,
+.switch[aria-checked="true"]:active .switch-track {
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+.switch:disabled,
+.switch:disabled:hover,
+.switch:disabled:active {
+  color: var(--muted);
+  background: transparent;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.switch:disabled .switch-track,
+.switch:disabled:hover .switch-track {
+  box-shadow: inset 0 0 0 1px var(--control);
+  background: var(--raised);
+}
+
+.rail-btn {
+  color: var(--muted);
+  border-radius: var(--radius-control);
+  transition: color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.rail-btn:hover {
+  color: var(--text);
+  background: var(--raised);
+}
+
+.rail-btn:active {
+  color: var(--text);
+  box-shadow: inset 0 0 0 1px var(--control);
+}
+
+.rail-btn.is-active,
+.rail-btn.is-active:hover {
+  color: var(--text);
+}
+
+button.rail-btn:disabled,
+button.rail-btn:disabled:hover,
+button.rail-btn:disabled:active {
+  color: var(--muted);
+  background: transparent;
+  box-shadow: none;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.switch[data-icon] .switch-label,
+.limiar[data-icon] > span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.text-btn[data-icon]::before,
+.switch[data-icon] .switch-label::before,
+.limiar[data-icon] > span:first-child::before {
+  content: "";
+  width: 16px;
+  height: 16px;
+  flex: none;
+  background: currentColor;
+  -webkit-mask: var(--ico) center / 16px 16px no-repeat;
+  mask: var(--ico) center / 16px 16px no-repeat;
+}
+
+[data-icon="abrir"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 3.2h7.2v9.6H2.2z'/%3E%3Cpath d='M11 8h3M12.4 6.3 14.2 8 12.4 9.7'/%3E%3C/svg%3E"); }
+[data-icon="fechar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 3.2h11.6v9.6H2.2z'/%3E%3Cpath d='M6 6.2 10 10.2M10 6.2 6 10.2'/%3E%3C/svg%3E"); }
+[data-icon="sair"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 2.8h4.2v10.4H9'/%3E%3Cpath d='M2.2 8h6.2M6.2 5.6 8.6 8 6.2 10.4'/%3E%3C/svg%3E"); }
+[data-icon="escala"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 6.2V2.2H6.2M9.8 2.2h4V6.2M13.8 9.8v4H9.8M6.2 13.8H2.2V9.8'/%3E%3C/svg%3E"); }
+[data-icon="automatico"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12.6 6.2a4.8 4.8 0 1 0 1 3.2'/%3E%3Cpath d='M13.2 2.4v3.4h-3.4'/%3E%3C/svg%3E"); }
+[data-icon="capturar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='5.4'/%3E%3Ccircle cx='8' cy='8' r='1.7'/%3E%3C/svg%3E"); }
+[data-icon="repetir"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 6h8.2M8.6 3.6 11.2 6 8.6 8.4M13.6 10H5.4M7.4 7.6 4.8 10 7.4 12.4'/%3E%3C/svg%3E"); }
+[data-icon="revive"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='8' cy='8' r='5.4'/%3E%3Cpath d='M8 5.2v5.6M5.2 8h5.6'/%3E%3C/svg%3E"); }
+[data-icon="pocao"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.4 2.4h3.2M7.2 2.4v3.2M8.8 2.4v3.2M5.2 5.8h5.6v5a2.8 2.8 0 0 1-5.6 0z'/%3E%3C/svg%3E"); }
+[data-icon="voltar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6.2 4.4 3.2 7.2l3 2.8'/%3E%3Cpath d='M4.2 7.2h6a3 3 0 1 1 0 6H8'/%3E%3C/svg%3E"); }
+[data-icon="mudo"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 6.2h2.2L8 3.6v8.8L4.8 9.8H2.6z'/%3E%3Cpath d='M10.6 6.2 13.8 9.8M13.8 6.2 10.6 9.8'/%3E%3C/svg%3E"); }
+[data-icon="economia"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.2 12.6V4.2M8 12.6V7.2M12.8 12.6v-2.2'/%3E%3C/svg%3E"); }
+[data-icon="recarregar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.4 6.2A4.8 4.8 0 0 1 12.2 4.8M12.6 2.2v3.2H9.4M12.6 9.8A4.8 4.8 0 0 1 3.8 11.2M3.4 13.8v-3.2h3.2'/%3E%3C/svg%3E"); }
+[data-icon="igualar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.8 6h2.5v4H1.8zM5.1 6h2.5v4H5.1zM8.4 6h2.5v4H8.4zM11.7 6h2.5v4h-2.5z'/%3E%3C/svg%3E"); }
+[data-icon="renomear"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9.6 2.8 13.2 6.4 5.8 13.6H2.6v-3.2z'/%3E%3Cpath d='M8.4 4 12 7.6'/%3E%3C/svg%3E"); }
+[data-icon="tirar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 2.2h4.4v4.4H2.2zM9.4 2.2h4.4v4.4H9.4zM2.2 9.4h4.4v4.4H2.2zM10 12.2h3.6'/%3E%3C/svg%3E"); }
+[data-icon="cancelar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M4 4l8 8M12 4 4 12'/%3E%3C/svg%3E"); }
+[data-icon="entrar"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.2 8.2 6.5 11.4 12.8 4.8'/%3E%3C/svg%3E"); }
+[data-icon="grade"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 2.2h4.6v4.6h-4.6zM9.2 2.2h4.6v4.6h-4.6zM2.2 9.2h4.6v4.6h-4.6zM9.2 9.2h4.6v4.6h-4.6z'/%3E%3C/svg%3E"); }
+[data-icon="fila"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.2 5.4h3.2v5.2H2.2zM6.4 5.4h3.2v5.2H6.4zM10.6 5.4h3.2v5.2h-3.2z'/%3E%3C/svg%3E"); }
+[data-icon="coluna"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.2 2.2h9.6v3H3.2zM3.2 6.5h9.6v3H3.2zM3.2 10.8h9.6v3H3.2z'/%3E%3C/svg%3E"); }
+[data-icon="mapa"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 3.6 5.6 2.4l4.8 1.4 3.2-1.4v10l-3.2 1.2-4.8-1.4-3.2 1.2z'/%3E%3Cpath d='M5.6 2.4v9.8M10.4 3.8v9.8'/%3E%3C/svg%3E"); }
+[data-icon="pokedex"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3.2 2.4h9.6v11.2H3.2zM8 2.4v11.2'/%3E%3C/svg%3E"); }
+[data-icon="depot"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.4 5.2 8 2.6l5.6 2.6v6L8 13.8l-5.6-2.6z'/%3E%3Cpath d='M2.4 5.2 8 7.8l5.6-2.6M8 7.8v6'/%3E%3C/svg%3E"); }
+[data-icon="boss"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M8 2.2 13.4 8 8 13.8 2.6 8z'/%3E%3C/svg%3E"); }
+[data-icon="market"] { --ico: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23fff' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.6 8.2 7.6 3h5.6v5.6L8 13.8z'/%3E%3Ccircle cx='11.2' cy='5.4' r='0.7' fill='%23fff' stroke='none'/%3E%3C/svg%3E"); }
+
+@media (prefers-reduced-motion: reduce) {
+  .text-btn,
+  .rail-btn,
+  .switch,
+  .switch-track,
+  .switch-thumb {
+    transition: none;
+  }
+}
