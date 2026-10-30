@@ -1,14 +1,14 @@
 {
   "name": "mesa-pokeidle",
   "productName": "Mesa",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "description": "Mesa local com quatro baías do Pokeidle.",
   "license": "MIT",
   "main": "src/main/index.js",
   "scripts": {
     "start": "node ./node_modules/electron/cli.js . --disable-blink-features=DocumentPictureInPictureAPI,WebAuthentication",
-    "test": "node --test src/main/live/channels.test.js src/main/live/irc.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/pokeidle-session.test.js",
+    "test": "node --test src/main/live/channels.test.js src/main/live/irc.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/pokeidle-session.test.js src/renderer/hunt-rank.test.js",
     "dist": "node ./scripts/dist-portable.js"
   },
   "dependencies": {

@@ -25,7 +25,15 @@ function createHuntReader() {
     catalogRev: 0,
     huntEventSeq: 0,
     huntEventSlug: '',
+    ondaSeq: 0,
+    combateOndaSeq: 0,
+    trocaHuntLivreEm: null,
+    waveClear: false,
+    safariDentro: false,
+    _spawnOndaAtual: false,
   };
+
+  const switchGate = createSwitchGate(state);
 
   function slugOf(value) {
     return typeof value === 'string' && SLUG.test(value) ? value : '';
@@ -194,12 +202,14 @@ function createHuntReader() {
     if (Number.isInteger(estado.activeId)) state.activeId = estado.activeId;
     if (Array.isArray(estado.pokemons)) replacePokemons(estado.pokemons);
     if (Array.isArray(estado.pkMud)) patchPokemons(estado.pkMud);
+    switchGate.applyEstado(estado, slugOf);
   }
 
   function applyBattle(frame) {
     const events = frame && Array.isArray(frame.ev) ? frame.ev : [];
     for (const event of events) {
       if (!event || typeof event !== 'object') continue;
+      switchGate.applyEvent(event, slugOf);
       if (event.k === 'hunt') {
         const slug = slugOf(event.slug);
         if (!slug) continue;

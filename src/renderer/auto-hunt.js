@@ -96,7 +96,7 @@ var MesaAutoHunt = (function () {
     if (bay.huntRetryAt && now < bay.huntRetryAt) return;
     if (bay.huntHoldUntil && now < bay.huntHoldUntil) return;
     if (!best || !best.move || best.slug === hunt.huntSlug) return;
-    if (MesaHuntRank.combatLocked(hunt, now)) return;
+    if (MesaHuntRank.switchBlocked(hunt, now)) return;
     bay.huntWant = best.slug;
     bay.huntArmedUntil = now + CONFIRM_MS;
     try { webviews[index].send('hunt-select', best.slug); }
@@ -119,7 +119,9 @@ var MesaAutoHunt = (function () {
     if (!bay || !bay.loggedIn || !bay.hunt || !bay.hunt.ready) return 'Mapa automático ligado. Aguardando a conta.';
     const current = mapName(bay.hunt);
     const best = bay.huntBest;
-    if (best && best.move && MesaHuntRank.combatLocked(bay.hunt, Date.now())) return 'Aguardando o fim do combate.';
+    if (best && best.move && MesaHuntRank.switchBlocked(bay.hunt, Date.now())) {
+      return MesaHuntRank.switchBlockedReason(bay.hunt, Date.now()) || 'Aguardando o fim do combate.';
+    }
     if (best && best.move) return `Mapa atual: ${current}. Recomendado: ${best.name}.`;
     return `Mapa atual: ${current}.`;
   }
@@ -185,10 +187,16 @@ var MesaAutoHunt = (function () {
       hunts: Array.isArray(payload.hunts) ? payload.hunts : (prev && prev.hunts) || [],
       huntEventSeq: payload.huntEventSeq || 0,
       huntEventSlug: payload.huntEventSlug || '',
+      ondaSeq: payload.ondaSeq || 0,
+      combateOndaSeq: payload.combateOndaSeq || 0,
+      trocaHuntLivreEm: payload.trocaHuntLivreEm,
+      waveClear: payload.waveClear === true,
+      semCena: payload.semCena === true,
+      safariDentro: payload.safariDentro === true,
     };
     if (risingCenter) {
       bay.huntPending = null;
-      if (!MesaHuntRank.combatLocked(bay.hunt, Date.now())) bay.huntHoldUntil = Date.now() + 1500;
+      if (!MesaHuntRank.switchBlocked(bay.hunt, Date.now())) bay.huntHoldUntil = Date.now() + 1500;
     }
     if (bay.huntPending && payload.huntEventSeq > bay.huntPending.seenSeq && payload.huntEventSlug === bay.huntPending.slug) {
       bay.huntPending = null;

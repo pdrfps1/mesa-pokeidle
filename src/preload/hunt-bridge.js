@@ -121,6 +121,12 @@ function installHuntBridge(ipc) {
       catalogRev: intOf(raw.catalogRev, 0, Number.MAX_SAFE_INTEGER) || 0,
       huntEventSeq: intOf(raw.huntEventSeq, 0, Number.MAX_SAFE_INTEGER) || 0,
       huntEventSlug: slugOf(raw.huntEventSlug),
+      ondaSeq: intOf(raw.ondaSeq, 0, Number.MAX_SAFE_INTEGER) || 0,
+      combateOndaSeq: intOf(raw.combateOndaSeq, 0, Number.MAX_SAFE_INTEGER) || 0,
+      trocaHuntLivreEm: intOf(raw.trocaHuntLivreEm, 0, Number.MAX_SAFE_INTEGER),
+      waveClear: raw.waveClear === true,
+      semCena: raw.semCena === true,
+      safariDentro: raw.safariDentro === true,
     };
     if (Array.isArray(raw.hunts)) summary.hunts = raw.hunts.slice(0, 800).map(cleanHunt).filter(Boolean);
     const sendSlug = raw.send && typeof raw.send === 'object' ? slugOf(raw.send.slug) : '';

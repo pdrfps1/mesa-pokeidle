@@ -18,10 +18,11 @@ function bundleGamePreload(destDir, preloadDir) {
 }
 
 function loadPageSource(preloadDir) {
+  const gate = fs.readFileSync(path.join(preloadDir, 'hunt-page-switch-gate.js'), 'utf8');
   const reader = fs.readFileSync(path.join(preloadDir, 'hunt-page-state.js'), 'utf8');
   const live = fs.readFileSync(path.join(preloadDir, 'hunt-page-live.js'), 'utf8');
   const socket = fs.readFileSync(path.join(preloadDir, 'hunt-page.js'), 'utf8');
-  return `(function () {\nif (window.__mesaHuntPage) return;\nwindow.__mesaHuntPage = true;\n${reader}\n${live}\n${socket}\n})();\n`;
+  return `(function () {\nif (window.__mesaHuntPage) return;\nwindow.__mesaHuntPage = true;\n${gate}\n${reader}\n${live}\n${socket}\n})();\n`;
 }
 
 function installHuntPageHook(contents, source) {

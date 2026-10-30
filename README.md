@@ -2,7 +2,7 @@
 
 Mesa é o aplicativo de Windows para jogar [pokeidle.io](https://pokeidle.io/app) em até quatro contas ao mesmo tempo, neste computador. Cada conta fica numa baía, com a sessão guardada localmente. A senha continua na página do jogo.
 
-[Baixar Mesa.exe](https://github.com/pdrfps1/mesa-pokeidle/releases/latest/download/Mesa.exe) · versão 0.3.1 · Windows
+[Baixar Mesa.exe](https://github.com/pdrfps1/mesa-pokeidle/releases/latest/download/Mesa.exe) · versão 0.3.2 · Windows
 
 O Windows pode pedir confirmação na primeira abertura: o executável é portátil e não leva instalador.
 
@@ -23,7 +23,7 @@ Na baía em foco dá para mudar o mapa, a Pokédex, o depot, o boss e o mercado,
 
 **Lançar até capturar** e **Lançar sem parar** são VIP e se excluem. **Usar revive ao desmaiar**, **Usar poções** e **Voltar à hunt ao morrer/reset** valem para a baía em foco. A poção só entra abaixo da porcentagem escolhida. Voltar à hunt só acontece enquanto houver poção ou revive na bolsa.
 
-**Mapa automático** troca o mapa dessa conta quando outra hunt rende mais XP de treinador. O interruptor começa desligado. Com ele ligado, a Mesa lê o guia de hunts, espera o combate liberar e usa o comando do jogo. A troca só acontece se a outra hunt render pelo menos cerca de 8% a mais do que o mapa atual.
+**Mapa automático** troca o mapa dessa conta quando outra hunt rende mais XP de treinador. O interruptor começa desligado. Com ele ligado, a Mesa lê o guia de hunts e só manda trocar se a outra hunt render pelo menos cerca de 8% a mais do que o mapa atual, usando o comando do jogo. A troca respeita a trava do cliente: com a cena de combate ligada, só acontece entre ondas, quando o combate está liberado; em Modo Economia ou Modo Ultra, campo vazio não libera sozinho e vale o carimbo do servidor. Depois de entrar num mapa, o jogo impõe uma pausa de cerca de 10 segundos antes de trocar de novo. A Mesa não sai do Safari sozinha. O melhor farm ao lado da baía (XP/h e ouro/h) é só informação — não troca o mapa por aparecer ali.
 
 ## Espera
 

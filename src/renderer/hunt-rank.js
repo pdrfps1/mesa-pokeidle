@@ -209,6 +209,32 @@ var MesaHuntRank = (function () {
     return now + offset < summary.centroLivreEm;
   }
 
+  function serverNow(summary, now) {
+    const offset = finite(summary.serverOffsetMs) ? summary.serverOffsetMs : 0;
+    return now + offset;
+  }
+
+  function switchBlocked(summary, now) {
+    if (!summary) return false;
+    if (summary.safariDentro === true) return true;
+    if (finite(summary.trocaHuntLivreEm) && serverNow(summary, now) < summary.trocaHuntLivreEm) return true;
+    if (summary.semCena === true) return combatLocked(summary, now);
+    if (summary.waveClear === true) return false;
+    if (finite(summary.combateOndaSeq) && finite(summary.ondaSeq) && summary.combateOndaSeq < summary.ondaSeq) {
+      return false;
+    }
+    return combatLocked(summary, now);
+  }
+
+  function switchBlockedReason(summary, now) {
+    if (!switchBlocked(summary, now)) return '';
+    if (summary.safariDentro === true) return 'Aguardando sair do Safari.';
+    if (finite(summary.trocaHuntLivreEm) && serverNow(summary, now) < summary.trocaHuntLivreEm) {
+      return 'Aguardando a pausa do jogo para trocar de mapa.';
+    }
+    return 'Aguardando o fim do combate.';
+  }
+
   function moveOk(move) {
     return Array.isArray(move) && move.length >= 6
       && typeof move[0] === 'string' && typeof move[1] === 'string'
@@ -236,7 +262,7 @@ var MesaHuntRank = (function () {
     return { tipos: value.tipos, especies, hunts };
   }
 
-  return { read, estimate, signature, pick, combatLocked, bonusMultiplier };
+  return { read, estimate, signature, pick, combatLocked, switchBlocked, switchBlockedReason, bonusMultiplier };
 }());
 
 if (typeof module !== 'undefined' && module.exports) module.exports = MesaHuntRank;

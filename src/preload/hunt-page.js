@@ -5,6 +5,11 @@ function economyOn() {
   return !!(root && root.classList.contains('modo-economia'));
 }
 
+function semCenaOn() {
+  const root = document.documentElement;
+  return !!(root && (root.classList.contains('modo-economia') || root.classList.contains('modo-ultra')));
+}
+
 function installFrameCap() {
   const nativeFrame = window.requestAnimationFrame.bind(window);
   const nativeCancel = window.cancelAnimationFrame.bind(window);
@@ -104,6 +109,12 @@ function build(includeHunts) {
     catalogRev: state.catalogRev,
     huntEventSeq: state.huntEventSeq,
     huntEventSlug: state.huntEventSlug,
+    ondaSeq: state.ondaSeq,
+    combateOndaSeq: state.combateOndaSeq,
+    trocaHuntLivreEm: state.trocaHuntLivreEm,
+    waveClear: state.waveClear === true,
+    semCena: semCenaOn(),
+    safariDentro: state.safariDentro === true,
   };
   if (includeHunts) summary.hunts = state.hunts;
   return summary;
@@ -114,6 +125,8 @@ function fingerprint(summary) {
     summary.generation, summary.ready, summary.trainerLevel, summary.huntSlug, summary.huntName,
     summary.noCentro, summary.centroLivreEm, summary.serverOffsetMs, summary.vip, summary.xpBonus,
     summary.active, summary.catalogRev, summary.huntEventSeq, summary.huntEventSlug,
+    summary.ondaSeq, summary.combateOndaSeq, summary.trocaHuntLivreEm, summary.waveClear,
+    summary.semCena, summary.safariDentro,
   ]);
 }
 
