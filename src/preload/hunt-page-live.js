@@ -1,15 +1,19 @@
-function livePatchFromEstado(estado) {
+// Extrai o bloco da Twitch e da Kick do estado do jogo, sem validar: a validação fica no main.
+function livePatchFromEstado(estado, completo) {
   if (!estado || typeof estado !== 'object') return null;
+  const has = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
   const patch = {};
-  if (estado.twitch && typeof estado.twitch === 'object') {
+  if (has(estado, 'twitch')) {
     const src = estado.twitch;
-    const tw = {};
-    if (Array.isArray(src.lives)) tw.lives = src.lives;
-    if (Array.isArray(src.oficiais)) tw.oficiais = src.oficiais;
-    if (src.assistindo === true || src.assistindo === false) tw.assistindo = src.assistindo;
-    if (typeof src.pctAtual === 'number' && Number.isFinite(src.pctAtual)) tw.pctAtual = src.pctAtual;
-    if (typeof src.pct === 'number' && Number.isFinite(src.pct)) tw.pct = src.pct;
-    if (Object.keys(tw).length) patch.twitch = tw;
+    if (!src || typeof src !== 'object') {
+      patch.twitch = { desligado: true };
+    } else {
+      const tw = {};
+      for (const key of ['vinculado', 'login', 'bonus', 'pct', 'minutos', 'recompensas', 'pacotes', 'oficiais']) {
+        if (has(src, key)) tw[key] = src[key];
+      }
+      patch.twitch = tw;
+    }
   }
   if (estado.kick && typeof estado.kick === 'object') {
     const src = estado.kick;
@@ -19,5 +23,8 @@ function livePatchFromEstado(estado) {
     if (typeof src.minutos === 'number' && Number.isFinite(src.minutos)) k.minutos = src.minutos;
     if (Object.keys(k).length) patch.kick = k;
   }
-  return Object.keys(patch).length ? patch : null;
+  if (!patch.twitch && !patch.kick && completo !== true) return null;
+  if (Number.isInteger(estado.servidorAgora)) patch.servidorAgora = estado.servidorAgora;
+  if (completo === true) patch.completo = true;
+  return patch;
 }

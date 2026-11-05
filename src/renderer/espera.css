@@ -1,0 +1,249 @@
+/* Tela Espera: uma ficha por baía, lida de longe. */
+
+/* Capturas: uma linha discreta, sem caixa colorida. */
+.standby-captures {
+  flex: none;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 12px;
+  min-width: 0;
+}
+.standby-captures h2 {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+}
+.standby-captures .alert {
+  display: block;
+  padding: 0;
+  min-height: 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+
+.view.standby {
+  overflow: hidden;
+  gap: var(--gap);
+  min-height: 0;
+}
+.standby-grid {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: max-content max-content;
+  gap: var(--gap);
+  overflow: auto;
+  align-content: start;
+  align-items: start;
+}
+.standby-card {
+  min-width: 0;
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px 20px;
+  position: relative;
+  overflow: hidden;
+  align-self: start;
+  width: 100%;
+  --lamp: var(--lamp-off);
+}
+.standby-card[data-tone="live"] { --lamp: var(--lamp-live); }
+.standby-card[data-tone="wait"] { --lamp: var(--lamp-wait); }
+.standby-card[data-tone="bad"] { --lamp: var(--lamp-bad); }
+/* A marca de tipo (gota, folha, fantasma, estrela) era decoração. */
+.standby-mark { display: none; }
+
+.standby-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  flex: none;
+}
+.standby-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-name);
+  font-weight: 600;
+}
+.standby-name::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--lamp);
+}
+.standby-card[data-tone="wait"] .standby-name::before { background: transparent; box-shadow: inset 0 0 0 2px var(--lamp-wait); }
+.standby-card[data-tone="off"] .standby-name::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--lamp-off); }
+.standby-marks { display: flex; align-items: center; gap: 12px; justify-content: flex-end; }
+.standby-vip,
+.standby-status {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  height: auto !important;
+}
+.standby-status { color: var(--text-2) !important; font-size: var(--fs-label); font-weight: 400; }
+.standby-card[data-tone="bad"] .standby-status { color: var(--lamp-bad) !important; font-weight: 600; }
+.standby-vip { color: var(--text-3) !important; font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.02em; }
+.standby-vip[hidden] { display: none !important; }
+
+.standby-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.standby-left {
+  flex: 0 0 32%;
+  max-width: 32%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.standby-right {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.standby-facts { display: flex; flex-direction: column; gap: 12px; flex: 0 1 auto; min-height: 0; }
+.standby-fact span {
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+.standby-fact .fact-icon { display: none; }
+.standby-fact b {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font);
+  font-size: var(--fs-name);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.standby-fact-metric b { font-family: var(--font-display); font-size: var(--fs-metric); line-height: 1.2; }
+.standby-open {
+  width: 100%;
+  margin-top: auto;
+  flex: none;
+  box-shadow: none !important;
+}
+.standby-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  flex: none;
+}
+.standby-updated {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  flex: none;
+}
+.standby-updated b { color: var(--text); font-weight: 600; }
+
+/* Gráfico: uma linha no acento, a mesma em qualquer estado; a área só aparece com pontos reais. */
+.standby-chart {
+  position: relative;
+  flex: 0 0 130px;
+  width: 100%;
+  height: 130px;
+  max-height: 130px;
+  min-height: 130px;
+  display: block;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--color-accent);
+}
+.standby-chart-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 130px;
+  min-height: 0;
+  flex: none;
+  display: block;
+  vertical-align: top;
+}
+.standby-chart-svg[hidden] { display: none !important; }
+/* O SVG (viewBox 260×140) encolhe ~7% na altura de 130px: 13 unidades dão ~12px na tela. */
+.standby-chart-axis { fill: var(--text-2); font-size: 13px; font-family: var(--font); }
+.standby-chart-empty {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  pointer-events: none;
+}
+.standby-chart-empty[hidden] { display: none !important; }
+
+.standby-note {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  margin: 0;
+  flex: none;
+  padding: 0;
+  border: 0;
+}
+.standby-note[hidden] { display: none !important; }
+.standby-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 0;
+}
+.standby-lead,
+.standby-foot-note { margin: 0; color: var(--text-2); font-size: var(--fs-label); }
+
+/* Até 900px, uma ficha por linha: o gráfico e o eixo mantêm o tamanho legível. */
+@media (max-width: 900px) {
+  .standby-grid { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+}
+@media (max-width: 700px) {
+  .standby-grid { overflow: auto; }
+  .standby-body { flex-direction: column; }
+  .standby-left { flex: none; max-width: none; }
+}

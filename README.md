@@ -36,7 +36,7 @@ Em Espera o jogo sai da tela e a conta continua. Poção e ball podem reagir um 
 ![Ajustes de tema, disposição, rastreadores, sniper e processamento](docs/imagens/ajustes.png)
 
 - **Modo noturno** e **Modo otimizado** usam opções que o jogo já oferece. O modo otimizado reduz animação na luta.
-- **Disposição** alterna grade, fila ou coluna.
+- **Disposição** alterna grade, fila, coluna ou livre. No modo **Livre**, cada baía tem o próprio tamanho: arraste o canto inferior direito da baía ou use **Largura** e **Altura** na coluna da baía em foco. Altura **Automática** deixa a baía do tamanho do conteúdo.
 - **Rastreadores** corta anúncio e analytics da página. Passa a valer na próxima abertura.
 - **Sniper da baía em foco** começa desligado. Com o mercado aberto, clica em Comprar só nos nomes listados, separados por vírgula, quando o preço da tela está até o teto.
 - **Processamento** mede mesa, GPU e cada baía. A tabela enche depois de uns 20 segundos estáveis em cada situação: sem baía, uma baía, quatro baías, janela minimizada e Ajustes. O tempo passado em Espera entra na mesma leitura de Ajustes.

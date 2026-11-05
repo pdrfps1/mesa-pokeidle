@@ -238,7 +238,7 @@ function registerUpdater(deps) {
         message: 'Há uma versão nova, mas o Mesa.exe não foi encontrado na release.',
       };
     }
-    if (!app.isPackaged()) {
+    if (!app.isPackaged) {
       return {
         ok: true,
         status: 'dev',

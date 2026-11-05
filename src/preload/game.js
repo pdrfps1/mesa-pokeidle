@@ -11,7 +11,7 @@ const AUTOS = new Set([
 ]);
 const NAV = new Set(['Mapa', 'Pokédex', 'Depot', 'Boss', 'Market']);
 
-const PREF_KEYS = ['cfg-otimizado', 'cfg-night', 'cfg-economia', 'cfg-som'];
+const PREF_KEYS = ['cfg-otimizado', 'cfg-night', 'cfg-economia', 'cfg-ultra', 'cfg-som'];
 
 function cleanPrefs(raw) {
   const next = {};
@@ -24,6 +24,65 @@ function cleanPrefs(raw) {
 
 let prefs = {};
 try { prefs = cleanPrefs(ipcRenderer.sendSync('bay:prefs')); } catch { prefs = {}; }
+
+let ultraHold = null;
+
+function syncUltra(wantOn) {
+  const root = document.documentElement;
+  if (!root) return;
+  if (ultraHold !== null && ultraHold !== wantOn) ultraHold = null;
+  const on = root.classList.contains('modo-ultra');
+  const desiredKey = wantOn ? '1' : '0';
+  if (wantOn === on) {
+    try { localStorage.setItem('cfg-ultra', desiredKey); } catch { /* a página pode ainda não ter storage */ }
+    ultraHold = null;
+    return;
+  }
+  if (ultraHold === wantOn) {
+    try {
+      if (localStorage.getItem('cfg-ultra') !== desiredKey) localStorage.setItem('cfg-ultra', desiredKey);
+    } catch { /* a página pode ainda não ter storage */ }
+    return;
+  }
+  if (!wantOn) {
+    const sair = document.getElementById('ultra-sair');
+    if (sair) {
+      try { sair.click(); } catch { /* o jogo ainda está subindo */ }
+      return;
+    }
+  }
+  let openedModal = false;
+  let cfgUltra = document.getElementById('cfg-ultra');
+  if (!cfgUltra) {
+    const btnConfig = document.getElementById('btn-config');
+    if (btnConfig) {
+      try { btnConfig.click(); openedModal = true; } catch { /* o jogo ainda está subindo */ }
+    } else {
+      try { localStorage.setItem('cfg-ultra', desiredKey); } catch { /* a página pode ainda não ter storage */ }
+      return;
+    }
+    cfgUltra = document.getElementById('cfg-ultra');
+    if (!cfgUltra) {
+      try { localStorage.setItem('cfg-ultra', desiredKey); } catch { /* a página pode ainda não ter storage */ }
+      return;
+    }
+  }
+  try { localStorage.setItem('cfg-ultra', wantOn ? '0' : '1'); } catch { /* a página pode ainda não ter storage */ }
+  try { cfgUltra.click(); } catch { /* o jogo ainda está subindo */ }
+  const nowOn = root.classList.contains('modo-ultra');
+  let key = null;
+  try { key = localStorage.getItem('cfg-ultra'); } catch { /* a página pode ainda não ter storage */ }
+  const applied = key === desiredKey || wantOn === nowOn;
+  if (openedModal && applied) {
+    const modal = document.getElementById('modal');
+    if (modal && !modal.classList.contains('hidden')) {
+      const fechar = document.getElementById('modal-fechar');
+      if (fechar) try { fechar.click(); } catch { /* o jogo ainda está subindo */ }
+    }
+  }
+  if (wantOn === nowOn) ultraHold = null;
+  else ultraHold = wantOn;
+}
 
 function syncEconomy(wantOn) {
   const root = document.documentElement;
@@ -47,11 +106,12 @@ function syncEconomy(wantOn) {
 function applyPrefs() {
   try {
     for (const [key, value] of Object.entries(prefs)) {
-      if (key.startsWith('cfg-') && key !== 'cfg-economia' && localStorage.getItem(key) !== value) {
+      if (key.startsWith('cfg-') && key !== 'cfg-economia' && key !== 'cfg-ultra' && localStorage.getItem(key) !== value) {
         localStorage.setItem(key, value);
       }
     }
   } catch { /* a página pode ainda não ter storage */ }
+  syncUltra(prefs['cfg-ultra'] === '1');
   syncEconomy(prefs['cfg-economia'] === '1');
   const root = document.documentElement;
   if (root && prefs['cfg-night'] === '1' && !root.classList.contains('night-mode')) {

@@ -2,7 +2,7 @@ const FRAME_GAP_MS = 100;
 
 function economyOn() {
   const root = document.documentElement;
-  return !!(root && root.classList.contains('modo-economia'));
+  return !!(root && (root.classList.contains('modo-economia') || root.classList.contains('modo-ultra')));
 }
 
 function semCenaOn() {
@@ -65,8 +65,8 @@ let pendingReport = null;
 const liveQueue = [];
 let generation = Date.now();
 
-function emitLiveFromEstado(estado) {
-  const patch = livePatchFromEstado(estado);
+function emitLiveFromEstado(estado, completo) {
+  const patch = livePatchFromEstado(estado, completo);
   if (!patch) return;
   const api = window.__mesaHunt;
   if (api && typeof api.live === 'function') {
@@ -101,7 +101,7 @@ function build(includeHunts) {
     xpBonus: {
       guildRankPct: state.guildRankPct,
       guildBoostActive: state.guildBoostUntil != null && state.servidorAgora != null && state.guildBoostUntil > state.servidorAgora,
-      twitchPct: state.twitchPct,
+      twitchPct: reader.twitchPctNow(),
       eventTrainerPct: state.eventTrainerPct,
       eventPokemonPct: state.eventPokemonPct,
     },
@@ -183,14 +183,14 @@ function arm(ws) {
       reader.applyEstado(frame.estado, true);
       reader.takeHunts(frame.hunts);
       if (state.huntSlug && !state.huntName) state.huntName = reader.nameFor(state.huntSlug);
-      emitLiveFromEstado(frame.estado);
+      emitLiveFromEstado(frame.estado, true);
       publish();
       return;
     }
     if (ws !== confirmed) return;
     if (frame.t === 'estado') {
       reader.applyEstado(frame.estado, false);
-      emitLiveFromEstado(frame.estado);
+      emitLiveFromEstado(frame.estado, false);
     } else if (frame.t === 'batalha') reader.applyBattle(frame);
     else return;
     publish();

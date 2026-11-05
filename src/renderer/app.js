@@ -17,9 +17,20 @@ var live = Array.from({ length: MESA_CATALOG.bays }, () => ({
   editing: false,
   applied: {},
   potionAt: null,
+  painted: false,
 }));
 var webviews = [];
 var ui = {};
+var xpHistoryDoc = null;
+var xpHistoryDirty = false;
+
+const AUTO_ICON = {
+  'auto-ball-captura': 'capturar',
+  'auto-ball-sem-parar': 'repetir',
+  'auto-revive': 'revive',
+  'auto-potion': 'pocao',
+  'auto-voltar-hunt': 'voltar',
+};
 
 function el(tag, className, text) {
   const node = document.createElement(tag);
@@ -28,16 +39,79 @@ function el(tag, className, text) {
   return node;
 }
 
+function setCount(node, value) {
+  if (!node) return;
+  const card = node.closest('.kpi-card');
+  if (card) card.dataset.zero = value === 0 ? '1' : '0';
+  const text = String(value);
+  if (node.textContent === text) return;
+  node.textContent = text;
+}
+
+function toggleSvg(pathD) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '4');
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+  path.setAttribute('d', pathD);
+  svg.append(path);
+  return svg;
+}
+
 function toggle(label, className) {
-  const node = el('button', className || 'switch');
-  node.type = 'button';
-  node.setAttribute('role', 'switch');
-  node.setAttribute('aria-checked', 'false');
-  const track = el('span', 'switch-track');
-  track.setAttribute('aria-hidden', 'true');
-  track.append(el('span', 'switch-thumb'));
-  node.append(track, el('span', 'switch-label', label));
-  return node;
+  const wrap = el('label', `${className || 'label cursor-pointer gap-2 justify-start min-h-9'} mesa-switch-wrap`.trim());
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.setAttribute('role', 'switch');
+  input.className =
+    'toggle border-base-300 bg-base-300 text-base-content checked:border-success checked:bg-success checked:text-success-content';
+  wrap.append(el('span', 'label-text', label || ''), input, el('span', 'toggle-state', 'Desligado'));
+  return wrap;
+}
+
+function toggleInput(node) {
+  if (!node) return null;
+  if (node.tagName === 'INPUT') return node;
+  return node.querySelector('.toggle, input[type="checkbox"]');
+}
+
+function syncRangeFill(input) {
+  if (!input || input.type !== 'range') return;
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const lo = Number.isFinite(min) ? min : 0;
+  const hi = Number.isFinite(max) ? max : 100;
+  const span = hi - lo || 1;
+  const val = Number(input.value);
+  const pct = Math.max(0, Math.min(100, ((val - lo) / span) * 100));
+  input.style.setProperty('--range-p', `${pct}%`);
+}
+
+function setChecked(node, on) {
+  const input = toggleInput(node);
+  const checked = !!on;
+  if (input) input.checked = checked;
+  const host = (input && input.closest('[role="switch"]')) || node;
+  if (host && host.getAttribute('role') === 'switch') {
+    if (host.tagName !== 'INPUT') host.setAttribute('aria-checked', checked ? 'true' : 'false');
+    const state = (input ? input.parentElement : host).querySelector('.toggle-state');
+    if (state) state.textContent = checked ? 'Ligado' : 'Desligado';
+  }
+}
+
+function applyShellTheme(theme) {
+  cfg.shellTheme = theme === 'mesa-claro' ? 'mesa-claro' : 'mesa';
+  document.documentElement.setAttribute('data-theme', cfg.shellTheme);
+  save();
+}
+
+function bayStatusClass(status) {
+  if (status.tone === 'live') return 'badge badge-sm badge-soft badge-success bay-status';
+  if (status.tone === 'wait' || status.tone === 'bad') return 'badge badge-sm badge-soft badge-neutral bay-status';
+  return 'badge badge-sm badge-ghost bay-status';
 }
 
 function stamp() {
@@ -59,6 +133,31 @@ function flushCfgNow() {
     const ticket = ++cfgTicket;
     window.mesa.flushCfg(MESA_CATALOG.normalize(cfg), ticket);
   } catch { /* a janela está fechando */ }
+}
+
+function flushXpHistoryNow() {
+  if (!xpHistoryDirty || !xpHistoryDoc || !window.mesa) return;
+  const payload = typeof MesaXpHistory !== 'undefined' ? MesaXpHistory.normalize(xpHistoryDoc) : xpHistoryDoc;
+  xpHistoryDirty = false;
+  if (typeof window.mesa.flushHistory === 'function') {
+    try { window.mesa.flushHistory(payload); } catch { xpHistoryDirty = true; }
+    return;
+  }
+  if (typeof window.mesa.saveHistory === 'function') {
+    window.mesa.saveHistory(payload).catch(() => { xpHistoryDirty = true; });
+  }
+}
+
+function noteXpHistory(index) {
+  if (!xpHistoryDoc || typeof MesaXpHistory === 'undefined') return;
+  const bay = live[index];
+  if (!bay || !bay.loggedIn || !Number.isFinite(bay.rate)) return;
+  const result = MesaXpHistory.appendPoint(xpHistoryDoc, index, Date.now(), bay.rate, true);
+  if (!result.added) return;
+  xpHistoryDoc = result.doc;
+  xpHistoryDirty = true;
+  flushXpHistoryNow();
+  if (typeof paintStandby === 'function') paintStandby();
 }
 
 function titleOf(index) {
@@ -128,17 +227,27 @@ function pushPrefs() {
       'cfg-night': cfg.night ? '1' : '0',
       'cfg-otimizado': cfg.otimizado ? '1' : '0',
       'cfg-economia': (!focused || cfg.bays[index].eco) ? '1' : '0',
+      'cfg-ultra': cfg.bays[index].ultra ? '1' : '0',
       'cfg-som': cfg.bays[index].muted ? '0' : '1',
     });
   });
 }
 
-function tuneBays() {
-  if (window.mesa && window.mesa.tune) window.mesa.tune(cfg.selected, cfg.view !== 'ajustes' && cfg.view !== 'espera');
+function applyBayAudioMute(index) {
+  const list = MesaBayAudio.calls(cfg.bays, index);
+  for (const call of list) {
+    const webview = webviews[call.index];
+    if (!webview || typeof webview.setAudioMuted !== 'function') continue;
+    try {
+      webview.setAudioMuted(call.muted);
+    } catch (_) {
+      /* webview guest destruído */
+    }
+  }
 }
 
-function setChecked(node, on) {
-  node.setAttribute('aria-checked', on ? 'true' : 'false');
+function tuneBays() {
+  if (window.mesa && window.mesa.tune) window.mesa.tune(cfg.selected, cfg.view !== 'ajustes' && cfg.view !== 'espera');
 }
 
 function deskBays() {
@@ -152,19 +261,29 @@ function paintSummary() {
   const parts = rates.filter((rate) => rate != null).map((rate) => Math.round(rate));
   console.assert(counts.cacando + counts.medindo + counts.paradas + counts.sem === counts.grade);
   console.assert(parts.reduce((total, part) => total + part, 0) === MesaStatus.fmtXp(parts.reduce((total, part) => total + part, 0)).rounded);
-  ui.cacando.textContent = String(counts.cacando);
-  ui.medindo.textContent = String(counts.medindo);
-  ui.paradas.textContent = String(counts.paradas);
-  ui.sem.textContent = String(counts.sem);
-  ui.paradas.classList.toggle('is-alert', counts.paradas > 0);
+  setCount(ui.cacando, counts.cacando);
+  setCount(ui.medindo, counts.medindo);
+  setCount(ui.paradas, counts.paradas);
+  setCount(ui.sem, counts.sem);
+  let actionable = 0;
+  for (let index = 0; index < MESA_CATALOG.bays; index += 1) {
+    const bay = cfg.bays[index];
+    if (!bay || bay.placed === false || bay.open === false) continue;
+    if (!live[index].loggedIn || live[index].rate == null || live[index].rate > 0) continue;
+    actionable += 1;
+  }
+  const showFinding = actionable > 0;
+  ui.finding.hidden = !showFinding;
+  if (!showFinding) {
+    ui.finding.replaceChildren();
+    ui.finding.className = 'finding mesa-finding';
+    return;
+  }
   const sentence = MesaStatus.finding(counts, rates);
   ui.finding.replaceChildren();
-  if (counts.paradas > 0) {
-    const noun = counts.paradas === 1 ? '1 baía parada' : `${counts.paradas} baías paradas`;
-    ui.finding.append(el('em', null, noun), document.createTextNode(sentence.slice(noun.length)));
-  } else {
-    ui.finding.textContent = sentence;
-  }
+  ui.finding.className = 'finding mesa-finding';
+  const noun = counts.paradas === 1 ? '1 baía parada' : `${counts.paradas} baías paradas`;
+  ui.finding.append(el('em', null, noun), document.createTextNode(sentence.slice(noun.length)));
 }
 
 function paintBay(index) {
@@ -177,7 +296,10 @@ function paintBay(index) {
     return;
   }
   const status = statusOf(index);
+  const closed = cfg.bays[index].open === false;
+  const gameReady = !!live[index].painted && live[index].phase === 'jogo';
   bay.root.classList.toggle('is-selected', cfg.selected === index);
+  bay.root.classList.toggle('is-painted', gameReady && !closed);
   if (!live[index].editing) bay.name.textContent = titleOf(index);
   if (bay.huntHint) {
     const hint = typeof MesaAutoHunt !== 'undefined' && MesaAutoHunt.line ? MesaAutoHunt.line(index) : '';
@@ -185,20 +307,21 @@ function paintBay(index) {
     bay.huntHint.textContent = hint;
   }
   bay.status.textContent = status.word;
+  bay.status.className = bayStatusClass(status);
   bay.status.dataset.tone = status.tone;
-  bay.status.classList.toggle('is-alert', status.alert);
+  bay.root.dataset.tone = status.tone;
   const xp = MesaStatus.fmtXp(live[index].loggedIn ? live[index].rate : null);
   bay.xp.textContent = xp.text;
   bay.level.textContent = live[index].loggedIn && live[index].level ? live[index].level : '\u2013';
   bay.gold.textContent = live[index].loggedIn && live[index].gold ? live[index].gold : '\u2013';
   bay.ram.textContent = live[index].ram == null ? '\u2013' : `${live[index].ram} MB`;
-  bay.rename.hidden = cfg.selected !== index;
+  bay.rename.hidden = false;
   const hint = bay.huntHint && !bay.huntHint.hidden ? bay.huntHint.textContent : '';
   bay.root.setAttribute('aria-label', `Baía ${index + 1}, ${titleOf(index)}, ${status.word}${hint ? `, ${hint}` : ''}`);
-  const closed = cfg.bays[index].open === false;
   if (bay.openBtn) bay.openBtn.hidden = !closed;
   if (bay.closeBtn) bay.closeBtn.hidden = closed;
   if (closed) {
+    bay.root.classList.remove('is-painted');
     bay.stage.classList.add('is-empty');
     bay.empty.hidden = false;
     bay.empty.textContent = 'Baía fechada. O login continua guardado nesta baía.';
@@ -207,9 +330,10 @@ function paintBay(index) {
     return;
   }
   const waiting = live[index].phase !== 'jogo';
-  bay.stage.classList.toggle('is-empty', waiting);
-  bay.empty.hidden = !waiting;
-  if (webviews[index]) webviews[index].style.visibility = waiting ? 'hidden' : 'visible';
+  bay.stage.classList.toggle('is-empty', waiting || !gameReady);
+  const showStage = gameReady && !closed;
+  bay.empty.hidden = showStage || !waiting;
+  if (webviews[index]) webviews[index].style.visibility = showStage ? 'visible' : 'hidden';
   if (live[index].error) bay.empty.textContent = `${live[index].error} Último estado às ${live[index].lastGood || stamp()}.`;
   else if (!window.mesa) bay.empty.textContent = 'O jogo entra neste quadro quando a mesa roda no aplicativo.';
   else if (live[index].phase === 'fila') bay.empty.textContent = 'Aguardando a vez nesta abertura.';
@@ -219,22 +343,41 @@ function paintBay(index) {
 
 function paint() {
   const view = cfg.view === 'ajustes' || cfg.view === 'espera' ? cfg.view : 'mesa';
-  ui.mesaBtn.classList.toggle('is-active', view === 'mesa');
-  if (ui.esperaBtn) ui.esperaBtn.classList.toggle('is-active', view === 'espera');
-  ui.ajustesBtn.classList.toggle('is-active', view === 'ajustes');
+  ui.mesaBtn.classList.toggle('dock-active', view === 'mesa');
+  if (ui.esperaBtn) ui.esperaBtn.classList.toggle('dock-active', view === 'espera');
+  ui.ajustesBtn.classList.toggle('dock-active', view === 'ajustes');
   [ui.mesaBtn, ui.esperaBtn, ui.ajustesBtn].forEach((button) => {
     if (!button) return;
     button.removeAttribute('aria-current');
   });
   const current = view === 'espera' ? ui.esperaBtn : (view === 'ajustes' ? ui.ajustesBtn : ui.mesaBtn);
   if (current) current.setAttribute('aria-current', 'page');
+  if (ui.dock) {
+    const dockIndex = view === 'espera' ? 0 : (view === 'ajustes' ? 2 : 1);
+    ui.dock.style.setProperty('--dock-i', String(dockIndex));
+    if (!ui.dock.classList.contains('is-ready')) requestAnimationFrame(() => ui.dock.classList.add('is-ready'));
+  }
   ui.mesaView.hidden = view !== 'mesa';
   if (ui.esperaView) ui.esperaView.hidden = view !== 'espera';
   ui.ajustesView.hidden = view !== 'ajustes';
+  if (ui.pageTitle) {
+    ui.pageTitle.textContent = view === 'ajustes' ? 'Configurações' : (view === 'espera' ? 'Espera' : 'Automações');
+  }
+  if (ui.kpiRow) ui.kpiRow.hidden = view === 'ajustes';
+  if (ui.finding && view !== 'mesa') ui.finding.hidden = true;
+  if (ui.focusBayTitle) ui.focusBayTitle.textContent = titleOf(cfg.selected);
+  if (ui.opTabFocus) {
+    ui.opTabFocus.textContent = titleOf(cfg.selected);
+    ui.opTabFocus.setAttribute('aria-label', `Baía em foco: ${titleOf(cfg.selected)}`);
+  }
+  if (typeof syncOpTabInk === 'function') syncOpTabInk();
   ui.baysBox.dataset.layout = cfg.layout;
+  paintBayBoxes();
+  paintBaySize();
   for (const auto of MESA_CATALOG.autos) setChecked(ui.autos[auto.id], autoOn(cfg.selected, auto.id));
   setChecked(ui.mute, cfg.bays[cfg.selected].muted);
   setChecked(ui.eco, cfg.bays[cfg.selected].eco);
+  setChecked(ui.ultra, cfg.bays[cfg.selected].ultra === true);
   setChecked(ui.night, cfg.night);
   setChecked(ui.otimizado, cfg.otimizado);
   setChecked(ui.trackers, cfg.trackers);
@@ -242,16 +385,31 @@ function paint() {
   if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.paint();
   for (const item of MESA_CATALOG.layouts) {
     const on = cfg.layout === item.id;
-    ui.layouts[item.id].classList.toggle('is-on', on);
-    ui.layouts[item.id].setAttribute('aria-pressed', on ? 'true' : 'false');
+    for (const registry of [ui.layouts, ui.layoutsBar]) {
+      if (!registry || !registry[item.id]) continue;
+      registry[item.id].classList.toggle('btn-active', on);
+      registry[item.id].setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
   }
-  if (ui.autosScope) ui.autosScope.textContent = titleOf(cfg.selected);
+  const shellDark = cfg.shellTheme !== 'mesa-claro';
+  if (ui.shellMesa) {
+    ui.shellMesa.classList.toggle('btn-active', shellDark);
+    ui.shellMesa.setAttribute('aria-pressed', shellDark ? 'true' : 'false');
+  }
+  if (ui.shellClaro) {
+    ui.shellClaro.classList.toggle('btn-active', !shellDark);
+    ui.shellClaro.setAttribute('aria-pressed', !shellDark ? 'true' : 'false');
+  }
+  document.documentElement.setAttribute('data-theme', cfg.shellTheme);
   paintPotion();
   for (let index = 0; index < MESA_CATALOG.bays; index += 1) paintBay(index);
   paintSummary();
+  if (ui.finding && view !== 'mesa') ui.finding.hidden = true;
   if (typeof paintExtras === 'function') paintExtras();
+  if (typeof paintLiveBonus === 'function') paintLiveBonus();
   if (typeof paintZoom === 'function') paintZoom();
   if (typeof paintSlots === 'function') paintSlots();
+  if (typeof syncShellFold === 'function') syncShellFold();
   if (typeof syncLeave === 'function') syncLeave();
   if (typeof paintStandby === 'function') paintStandby();
 }
@@ -264,6 +422,7 @@ function paintPotion() {
   if (editing) return;
   ui.potion.value = shown == null ? '10' : String(shown);
   ui.potionPct.textContent = shown == null ? '\u2013' : `${shown}%`;
+  syncRangeFill(ui.potion);
 }
 
 function select(index) {
@@ -297,6 +456,11 @@ function reconcile(index) {
 
 function onState(index, snap) {
   const bay = live[index];
+  if (!bay.painted) {
+    bay.painted = true;
+    if (typeof sizeBayFrame === 'function') sizeBayFrame(index);
+    if (typeof applyBayZoom === 'function') applyBayZoom(index, true);
+  }
   bay.loggedIn = !!snap.loggedIn;
   bay.nick = snap.nick || '';
   bay.level = snap.level || '';
@@ -310,6 +474,7 @@ function onState(index, snap) {
     const xp = MesaStatus.parseXp(snap.xpText);
     if (xp) MesaStatus.pushSample(bay, xp);
     bay.rate = MesaStatus.perHour(bay);
+    noteXpHistory(index);
     reconcile(index);
   } else {
     bay.rate = null;
@@ -341,6 +506,7 @@ function releaseGame(index) {
   live[index].rate = null;
   live[index].ram = null;
   live[index].error = '';
+  live[index].painted = false;
   if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.clear(index);
 }
 
@@ -349,6 +515,7 @@ function openBay(index) {
   const webview = webviews[index];
   if (!webview || webview.isConnected) return;
   live[index].phase = 'abrindo';
+  live[index].painted = false;
   live[index].error = '';
   webview.setAttribute('src', MESA_CATALOG.gameUrl);
   ui.bays[index].stage.append(webview);
@@ -370,6 +537,7 @@ function ensureGame(index, delay) {
       if (typeof applyBayZoom === 'function') applyBayZoom(index, true);
       paintBay(index);
       pushPrefs();
+      applyBayAudioMute(index);
       tuneBays();
       if (typeof pushSniper === 'function') pushSniper(index);
     });
@@ -380,6 +548,7 @@ function ensureGame(index, delay) {
       live[index].error = `O jogo não abriu nesta baía (${reason}).`;
       live[index].phase = 'erro';
       live[index].ready = false;
+      live[index].painted = false;
       paintBay(index);
     });
     webview.addEventListener('render-process-gone', () => {
@@ -387,6 +556,7 @@ function ensureGame(index, delay) {
       live[index].error = 'Esta baía caiu.';
       live[index].phase = 'erro';
       live[index].ready = false;
+      live[index].painted = false;
       paintBay(index);
     });
     webview.addEventListener('ipc-message', (event) => {
@@ -520,6 +690,7 @@ async function forgetBay(index) {
   try { ok = await window.mesa.resetBay(index); } catch { ok = false; }
   if (!ok) return;
   const bay = live[index];
+  bay.painted = false;
   bay.loggedIn = false;
   bay.nick = '';
   bay.level = '';
@@ -554,15 +725,40 @@ async function forgetBay(index) {
 function boot() {
   if (boot.started) return;
   boot.started = true;
-  window.addEventListener('beforeunload', flushCfgNow);
+  window.addEventListener('beforeunload', () => {
+    flushCfgNow();
+    flushXpHistoryNow();
+  });
   if (!window.mesa) {
+    document.documentElement.setAttribute('data-theme', cfg.shellTheme);
+    xpHistoryDoc = typeof MesaXpHistory !== 'undefined' ? MesaXpHistory.empty() : { v: 1, bays: [[], [], [], []] };
+    const previewBay = cfg.bays[cfg.selected];
+    previewBay.muted = true;
+    previewBay.eco = true;
+    previewBay.ultra = true;
+    previewBay.potionAt = 50;
+    previewBay.scale = 0.88;
     mount();
     if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.start();
     return;
   }
   window.mesa.loadCfg().then((saved) => {
     if (saved) Object.assign(cfg, MESA_CATALOG.normalize(saved));
+    document.documentElement.setAttribute('data-theme', cfg.shellTheme);
     cfgReady = true;
+    const historyReady = (typeof window.mesa.loadHistory === 'function'
+      ? window.mesa.loadHistory()
+      : Promise.resolve(null))
+      .then((raw) => {
+        xpHistoryDoc = typeof MesaXpHistory !== 'undefined'
+          ? MesaXpHistory.normalize(raw)
+          : { v: 1, bays: [[], [], [], []] };
+      })
+      .catch(() => {
+        xpHistoryDoc = typeof MesaXpHistory !== 'undefined' ? MesaXpHistory.empty() : { v: 1, bays: [[], [], [], []] };
+      });
+    return historyReady;
+  }).then(() => {
     mount();
     attachGames();
     if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.start();
@@ -582,3 +778,4 @@ function boot() {
     }
   });
 }
+
