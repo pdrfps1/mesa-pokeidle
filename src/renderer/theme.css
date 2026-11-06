@@ -1,0 +1,86 @@
+@import "tailwindcss" source(none);
+@source "./**/*.{html,js}";
+
+@plugin "daisyui" {
+  themes: false;
+  logs: false;
+  exclude:
+    accordion, aura, avatar, breadcrumbs, calendar, carousel, chat,
+    collapse, countdown, diff, drawer, dropdown, fab, filter, footer,
+    hero, hover3d, hovergallery, indicator, kbd, loading, mask, megamenu,
+    mockup, modal, navbar, otp, pagination, progress, radialprogress, radio,
+    rating, rootscrollgutter, select, skeleton, stack, steps, swap, tab,
+    textarea, textrotate, timeline, toast, tooltip, typography, validator, glass;
+}
+
+/* Vigília, tema escuro: grafite neutro (não tinge as cores do jogo), texto gelo e um acento azul-ardósia. */
+@plugin "daisyui/theme" {
+  name: "mesa";
+  default: true;
+  prefersdark: true;
+  color-scheme: dark;
+  --color-base-100: #161719; /* chão: oklch(20.5% 0.005 264) */
+  --color-base-200: #1d1e21; /* painel: oklch(23.5% 0.006 264) */
+  --color-base-300: #282a2e; /* elevado: oklch(28.5% 0.007 264) */
+  --color-base-content: #e1e3e6; /* texto: oklch(91.5% 0.004 264) */
+  --color-primary: #7fabeb; /* acento: oklch(73.5% 0.105 258) */
+  --color-primary-content: #0e1725;
+  --color-secondary: #b0b3b8;
+  --color-secondary-content: #161719;
+  --color-accent: #7fabeb;
+  --color-accent-content: #0e1725;
+  --color-neutral: #282a2e;
+  --color-neutral-content: #e1e3e6;
+  --color-info: #7fabeb;
+  --color-info-content: #0e1725;
+  --color-success: #78c594; /* caçando: oklch(76% 0.105 155) */
+  --color-success-content: #0c1a12;
+  --color-warning: #e0b16f; /* oklch(79% 0.10 75); fora da casca */
+  --color-warning-content: #1f1608;
+  --color-error: #e98079; /* parada: oklch(71.5% 0.13 25) */
+  --color-error-content: #240c0a;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}
+
+/* Vigília, tema claro: papel neutro frio, tinta grafite e o mesmo acento, mais escuro para texto. */
+@plugin "daisyui/theme" {
+  name: "mesa-claro";
+  default: false;
+  prefersdark: false;
+  color-scheme: light;
+  --color-base-100: #f1f2f4; /* chão: oklch(96.2% 0.003 264) */
+  --color-base-200: #fcfdfe; /* painel: oklch(99.3% 0.0015 264) */
+  --color-base-300: #e5e6e9; /* elevado: oklch(92.5% 0.004 264) */
+  --color-base-content: #202329; /* texto: oklch(25.5% 0.012 264) */
+  --color-primary: #3164b9; /* acento: oklch(51.5% 0.145 260) */
+  --color-primary-content: #fafcff;
+  --color-secondary: #4c5057;
+  --color-secondary-content: #fcfdfe;
+  --color-accent: #3164b9;
+  --color-accent-content: #fafcff;
+  --color-neutral: #282a2e;
+  --color-neutral-content: #e1e3e6;
+  --color-info: #3164b9;
+  --color-info-content: #fafcff;
+  --color-success: #1f7c4b; /* caçando: oklch(52% 0.115 155) */
+  --color-success-content: #f3fbf6;
+  --color-warning: #a7611b;
+  --color-warning-content: #fff8f0;
+  --color-error: #ba3939; /* parada: oklch(53.5% 0.165 25) */
+  --color-error-content: #fff6f5;
+  --radius-selector: 0.5rem;
+  --radius-field: 0.5rem;
+  --radius-box: 0.75rem;
+  --size-selector: 0.25rem;
+  --size-field: 0.25rem;
+  --border: 1px;
+  --depth: 0;
+  --noise: 0;
+}

@@ -7,16 +7,21 @@
   "license": "MIT",
   "main": "src/main/index.js",
   "scripts": {
+    "build:css": "tailwindcss -i src/renderer/theme.css -o src/renderer/theme.generated.css",
+    "prestart": "npm run build:css",
+    "predist": "npm run build:css",
     "start": "node ./node_modules/electron/cli.js . --disable-blink-features=DocumentPictureInPictureAPI,WebAuthentication",
-    "test": "node --test src/main/live/channels.test.js src/main/live/irc.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/pokeidle-session.test.js src/renderer/hunt-rank.test.js",
+    "test": "node --test src/main/twitch/points.test.js src/main/twitch/controller.test.js src/main/twitch/browser-login.test.js src/main/twitch/windows.test.js src/main/browser/profile-login.test.js src/main/bundles.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/live-catalog.test.js src/shared/twitch-dom.test.js src/shared/pokeidle-session.test.js src/shared/xp-history.test.js src/preload/hunt-page.test.js src/preload/twitch-page.test.js src/renderer/hunt-rank.test.js src/renderer/bay-audio.test.js src/renderer/live-bonus.test.js",
     "dist": "node ./scripts/dist-portable.js"
   },
   "dependencies": {
-    "electron": "^44.5.1",
-    "selfsigned": "^2.4.1"
+    "electron": "^44.5.1"
   },
   "devDependencies": {
-    "electron-builder": "^26.0.12"
+    "@tailwindcss/cli": "^4.3.3",
+    "daisyui": "^5.7.50",
+    "electron-builder": "^26.0.12",
+    "tailwindcss": "^4.3.3"
   },
   "build": {
     "appId": "local.mesa.pokeidle",

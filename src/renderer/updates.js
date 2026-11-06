@@ -1,10 +1,10 @@
 function mountUpdates(parent) {
   if (!window.mesa || typeof window.mesa.checkUpdates !== 'function') return;
-  ui.updateBtn = el('button', 'text-btn', 'Verificar atualizações');
+  ui.updateBtn = el('button', 'btn btn-sm btn-soft', 'Verificar atualizações');
   ui.updateBtn.type = 'button';
   ui.updateStatus = el('p', 'update-status', '');
   ui.updateStatus.setAttribute('aria-live', 'polite');
-  ui.updateLink = el('a', 'update-link', 'Abrir página da release');
+  ui.updateLink = el('a', 'link link-accent update-link', 'Abrir página da release');
   ui.updateLink.href = '#';
   ui.updateLink.hidden = true;
   ui.updateLink.addEventListener('click', (event) => {
@@ -14,10 +14,10 @@ function mountUpdates(parent) {
       window.mesa.openExternal(href);
     }
   });
-  const actions = el('div', 'stack');
+  const actions = el('div', 'action-row');
   actions.append(ui.updateBtn, ui.updateStatus, ui.updateLink);
-  const row = el('div', 'setting');
-  const text = el('div');
+  const row = el('div', 'settings-field');
+  const text = el('div', 'settings-field-text');
   text.append(
     el('strong', null, 'Atualização'),
     el('p', null, 'Compara com a última release no GitHub e substitui o Mesa.exe quando houver versão mais nova.'),

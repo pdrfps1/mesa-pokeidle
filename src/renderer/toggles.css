@@ -1,0 +1,170 @@
+/* Casca dos interruptores DaisyUI. Fora de @layer para vencer regras em camada do componente. */
+
+.mesa-switch-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  flex: none;
+  max-width: 100%;
+  min-height: 0;
+  color: var(--text);
+}
+.mesa-switch-wrap.label { color: var(--text); }
+
+.mesa-switch-wrap .label-text:empty { display: none; }
+
+/* Desligado: trilho neutro com contorno visível (≥3:1). Ligado: acento cheio. Verde fica só para "caçando". */
+.mesa-switch-wrap .toggle:not(:checked) {
+  border-color: var(--text-3);
+  background-color: color-mix(in oklch, var(--color-base-content) 12%, var(--surface));
+  color: var(--text-2);
+}
+.mesa-switch-wrap .toggle:checked {
+  border-color: var(--color-accent);
+  background-color: var(--color-accent);
+  color: var(--color-accent-content);
+}
+
+/* Marcação "Na grade": acento, canto de 6px para não parecer opção de rádio. */
+.bay-placed-bar .checkbox {
+  --chkbg: var(--color-accent);
+  --chkfg: var(--color-accent-content);
+  border-color: var(--text-3);
+  border-radius: var(--radius-chip);
+}
+.bay-placed-bar .checkbox:checked,
+.bay-placed-bar .checkbox-success:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+  color: var(--color-accent-content);
+}
+
+/* Palavra de estado: só em lista esparsa (Configurações). No console, a chave fala sozinha (posição, preenchimento e estado nativo do checkbox). */
+.mesa-switch-wrap .toggle-state {
+  font-family: var(--font);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-2);
+  white-space: nowrap;
+  min-width: 0;
+}
+.mesa-switch-wrap .toggle-state:empty { display: none; }
+.mesa-switch-wrap:has(.toggle:checked) .toggle-state { color: var(--text); }
+.op-card .mesa-switch-wrap .toggle-state { display: none; }
+
+.auto-switch-row.mesa-switch-wrap {
+  gap: 8px;
+  min-height: 0 !important;
+  color: var(--text);
+}
+.auto-switch-row .toggle-state {
+  order: 1;
+  text-align: right;
+  flex: none;
+}
+.auto-switch-row .toggle { order: 3; flex: none; }
+
+.settings-switch.mesa-switch-wrap { justify-content: flex-end; }
+/* O nome do interruptor sai da vista, mas continua no nome acessível (o título da linha já mostra o texto). */
+.settings-switch .label-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Mudo, Economia, Ultra: linha de lista, com o rótulo à esquerda e a chave à direita. */
+.mesa-switch-word {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: var(--row-height);
+  text-align: left;
+  border-radius: 0;
+  background: transparent;
+  border: 0;
+  padding: 0;
+}
+.mesa-switch-word .label-text {
+  order: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: var(--fs-body);
+  font-weight: 400;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mesa-switch-word .toggle { order: 2; flex: none; }
+.mesa-switch-word .focus-pref-icon { display: none; }
+.mesa-switch-word .toggle-state { order: 3; }
+
+/* Controle deslizante: área de toque de 24px, trilho de 4px preenchido no acento, bolinha escura com aro no acento. */
+.limiar-range {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto !important;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  overflow: visible !important;
+  accent-color: var(--color-accent);
+  border-radius: 0 !important;
+  cursor: pointer;
+  container-type: normal;
+}
+.limiar-range:focus { outline: none; }
+.limiar-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--color-accent) 0 var(--range-p, 0%), color-mix(in oklch, var(--color-base-content) 18%, transparent) var(--range-p, 0%) 100%);
+}
+.limiar-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  border: 3px solid var(--color-accent);
+  background-color: var(--surface);
+  box-shadow: 0 0 0 3px var(--surface);
+  transition: box-shadow 150ms ease;
+}
+.limiar-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 3px var(--surface), 0 0 0 5px var(--color-accent);
+}
+.limiar-range::-moz-range-track {
+  height: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--color-base-content) 18%, transparent);
+}
+.limiar-range::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--color-accent); }
+.limiar-range::-moz-range-thumb {
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  border: 3px solid var(--color-accent);
+  border-radius: 50%;
+  background-color: var(--surface);
+}
+.limiar-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--color-accent);
+}
+.limiar-range:disabled { opacity: 0.4; }

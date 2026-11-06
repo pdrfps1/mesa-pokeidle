@@ -1,8 +1,16 @@
-const path = require('node:path');
-const fs = require('node:fs');
-const { spawn } = require('node:child_process');
 const { findSystemBrowser } = require('./browser/find-browser');
-const { cdpRpc, readDevToolsPort, remoteDebuggingCliArgs } = require('./browser/cdp');
+const {
+  loginProfileDir,
+  clearLoginProfile,
+  isLoginBrowserRunning,
+  listDevToolsPages,
+  navigateHeadlessTab,
+  openProfileBrowser,
+  readViaHeadless,
+  applyCookies,
+  createImportWatcher,
+} = require('./browser/profile-login');
+const { cdpRpc } = require('./browser/cdp');
 const {
   POKEIDLE_ORIGIN,
   POKEIDLE_APP_URL,
@@ -10,13 +18,10 @@ const {
   isPokeidleHost,
   isPokeidleCookie,
   isLoggedInStorage,
-  sameSiteForElectron,
-  cookieSetUrl,
 } = require('../shared/pokeidle-session');
 
 const espera = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
-const opening = new Set();
-const importWatchers = new Map();
+const importWatcher = createImportWatcher();
 
 const IMPORT_HINT = {
   pending: 'O login no navegador ainda não terminou. Entre no jogo em pokeidle.io, feche o navegador e tente «Já entrei».',
@@ -24,15 +29,6 @@ const IMPORT_HINT = {
   'profile-busy': 'O perfil de login ainda está em uso. Feche todas as janelas do Edge ou Chrome desta baía e tente de novo.',
   failed: 'Não foi possível importar o login. Feche o navegador, entre no jogo e clique em «Já entrei».',
 };
-
-function loginProfileDir(userData, partition) {
-  const id = String(partition || '').replace(/^persist:/, '');
-  return path.join(userData, 'login', id || 'mesa');
-}
-
-function clearLoginProfile(userData, partition) {
-  fs.rmSync(loginProfileDir(userData, partition), { recursive: true, force: true });
-}
 
 function webContentsForBay(webContents, session, catalog, bayIndex) {
   const part = catalog.partitions[bayIndex];
@@ -57,41 +53,6 @@ async function readSessionFromTarget(wsUrl) {
   return { storage, cookies: (cookies || []).filter(isPokeidleCookie) };
 }
 
-function isLoginBrowserRunning(profileDir) {
-  const lockfile = path.join(profileDir, 'lockfile');
-  if (!fs.existsSync(lockfile)) return false;
-  try {
-    const pid = parseInt(String(fs.readFileSync(lockfile, 'utf8')).trim().split(/\s+/)[0], 10);
-    if (!Number.isFinite(pid) || pid <= 0) return true;
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    if (err && err.code === 'ESRCH') {
-      fs.rmSync(lockfile, { force: true });
-      return false;
-    }
-    return true;
-  }
-}
-
-async function navigateHeadlessTab(wsUrl, url) {
-  await cdpRpc(wsUrl, 'Page.enable').catch(() => {});
-  await cdpRpc(wsUrl, 'Page.navigate', { url });
-  for (let i = 0; i < 40; i += 1) {
-    await espera(250);
-    const ready = await cdpRpc(wsUrl, 'Runtime.evaluate', {
-      expression: 'document.readyState',
-      returnByValue: true,
-    }).catch(() => null);
-    if (ready && ready.result.value === 'complete') break;
-  }
-}
-
-async function listDevToolsPages(base) {
-  const list = await (await fetch(`${base}/json/list`)).json();
-  return Array.isArray(list) ? list : [];
-}
-
 async function readSessionFromPages(base) {
   const tabs = await listDevToolsPages(base);
   for (const tab of tabs) {
@@ -103,60 +64,22 @@ async function readSessionFromPages(base) {
   return null;
 }
 
-async function closeHeadlessBrowser(browserWsUrl) {
-  if (!browserWsUrl) return;
-  await cdpRpc(browserWsUrl, 'Browser.close').catch(() => {});
-}
-
-async function readSessionViaHeadless(browserExe, profileDir) {
-  const arqPorta = path.join(profileDir, 'DevToolsActivePort');
-  for (let tentativa = 0; tentativa < 8; tentativa += 1) {
-    fs.rmSync(arqPorta, { force: true });
-    const child = spawn(
-      browserExe,
-      [
-        '--headless=new',
-        `--user-data-dir=${profileDir}`,
-        ...remoteDebuggingCliArgs(),
-        '--no-first-run',
-        '--no-default-browser-check',
-        'about:blank',
-      ],
-      { stdio: 'ignore' },
-    );
-    try {
-      for (let i = 0; i < 24 && !fs.existsSync(arqPorta); i += 1) await espera(250);
-      const port = readDevToolsPort(profileDir, fs);
-      if (!port) continue;
-      const base = `http://127.0.0.1:${port}`;
-      const version = await (await fetch(`${base}/json/version`)).json();
-      const browserWsUrl = version.webSocketDebuggerUrl;
-      const userAgent = version['User-Agent'] || '';
-
-      let sessao = await readSessionFromPages(base);
-      if (!sessao) {
-        const tabs = await listDevToolsPages(base);
-        const pageTab = tabs.find((t) => t && t.type === 'page' && t.webSocketDebuggerUrl);
-        if (pageTab) {
-          await navigateHeadlessTab(pageTab.webSocketDebuggerUrl, POKEIDLE_APP_URL);
-          for (let poll = 0; poll < 48 && !sessao; poll += 1) {
-            await espera(500);
-            sessao = await readSessionFromPages(base);
-          }
-        }
+// Leitor do jogo: lê o localStorage e os cookies do jogo, e navega a aba headless até o jogo se faltar sessão.
+async function leitorDoJogo({ base, userAgent }) {
+  let sessao = await readSessionFromPages(base);
+  if (!sessao) {
+    const tabs = await listDevToolsPages(base);
+    const pageTab = tabs.find((t) => t && t.type === 'page' && t.webSocketDebuggerUrl);
+    if (pageTab) {
+      await navigateHeadlessTab(pageTab.webSocketDebuggerUrl, POKEIDLE_APP_URL);
+      for (let poll = 0; poll < 48 && !sessao; poll += 1) {
+        await espera(500);
+        sessao = await readSessionFromPages(base);
       }
-
-      await closeHeadlessBrowser(browserWsUrl);
-      if (sessao && isLoggedInStorage(sessao.storage)) {
-        return { ...sessao, userAgent };
-      }
-      return null;
-    } catch {
-      // perfil ainda em uso ou navegador lento para subir
-    } finally {
-      child.kill();
     }
-    await espera(2000);
+  }
+  if (sessao && isLoggedInStorage(sessao.storage)) {
+    return { ...sessao, userAgent };
   }
   return null;
 }
@@ -167,19 +90,7 @@ async function applySession(deps, bayIndex, { storage, cookies, userAgent }) {
   const ses = session.fromPartition(part);
   if (userAgent) ses.setUserAgent(userAgent);
   else ses.setUserAgent(chromeUserAgent());
-  for (const cookie of cookies) {
-    await ses.cookies.set({
-      url: cookieSetUrl(cookie),
-      name: cookie.name,
-      value: cookie.value,
-      domain: cookie.domain,
-      path: cookie.path,
-      secure: cookie.secure,
-      httpOnly: cookie.httpOnly,
-      sameSite: sameSiteForElectron(cookie.sameSite),
-      ...(cookie.expires > 0 ? { expirationDate: cookie.expires } : {}),
-    }).catch(() => {});
-  }
+  await applyCookies(ses, cookies);
   const wc = webContentsForBay(webContents, session, catalog, bayIndex);
   if (!wc) return true;
   const currentHost = hostOf(wc.getURL());
@@ -207,7 +118,7 @@ async function importLoginSession(fullDeps, bay) {
   if (isLoginBrowserRunning(profileDir)) {
     return { ok: false, reason: 'browser-open' };
   }
-  const sessao = await readSessionViaHeadless(browserExe, profileDir).catch(() => null);
+  const sessao = await readViaHeadless(browserExe, profileDir, leitorDoJogo).catch(() => null);
   if (!sessao || !isLoggedInStorage(sessao.storage)) {
     return { ok: false, reason: 'pending' };
   }
@@ -227,48 +138,17 @@ function sendLoginResult(deps, bay, result) {
 }
 
 function stopImportWatch(bay) {
-  const handle = importWatchers.get(bay);
-  if (handle) clearInterval(handle);
-  importWatchers.delete(bay);
+  importWatcher.stop(bay);
 }
 
 function startImportWatch(fullDeps, bay) {
-  stopImportWatch(bay);
   const profileDir = loginProfileDir(fullDeps.userData(), fullDeps.catalog.partitions[bay]);
-  let sawBrowser = false;
-  const handle = setInterval(async () => {
-    const running = isLoginBrowserRunning(profileDir);
-    if (running) {
-      sawBrowser = true;
-      return;
-    }
-    if (!sawBrowser) return;
-    stopImportWatch(bay);
-    await espera(1000);
-    for (let attempt = 0; attempt < 6; attempt += 1) {
-      if (isLoginBrowserRunning(profileDir)) {
-        startImportWatch(fullDeps, bay);
-        return;
-      }
-      const result = await importLoginSession(fullDeps, bay);
-      if (result.ok) {
-        sendLoginResult(fullDeps, bay, result);
-        return;
-      }
-      if (result.reason === 'browser-open') {
-        await espera(1500);
-        continue;
-      }
-      if (result.reason === 'pending' && attempt < 5) {
-        await espera(2000);
-        continue;
-      }
-      sendLoginResult(fullDeps, bay, result);
-      return;
-    }
-    sendLoginResult(fullDeps, bay, { ok: false, reason: 'failed' });
-  }, 1000);
-  importWatchers.set(bay, handle);
+  importWatcher.start(
+    bay,
+    profileDir,
+    () => importLoginSession(fullDeps, bay),
+    (result) => sendLoginResult(fullDeps, bay, result),
+  );
 }
 
 function openLoginBrowser(deps, index, onOpened) {
@@ -279,29 +159,16 @@ function openLoginBrowser(deps, index, onOpened) {
     return { ok: false, error: 'bay' };
   }
   if (!browserExe) return { ok: false, error: 'no-browser' };
-  if (opening.has(bay)) return { ok: true };
-  opening.add(bay);
   const profileDir = loginProfileDir(userData(), catalog.partitions[bay]);
-  fs.mkdirSync(profileDir, { recursive: true });
-  fs.rmSync(path.join(profileDir, 'DevToolsActivePort'), { force: true });
+  const aberto = openProfileBrowser({ browserExe, profileDir, url: POKEIDLE_APP_URL, spawn: deps.spawn });
+  if (!aberto.ok) return aberto;
+  // Já estava abrindo: como antes, devolve ok sem chamar onOpened.
+  if (aberto.ja) return { ok: true };
   try {
-    spawn(
-      browserExe,
-      [
-        `--user-data-dir=${profileDir}`,
-        '--no-first-run',
-        '--no-default-browser-check',
-        '--new-window',
-        POKEIDLE_APP_URL,
-      ],
-      { detached: true, stdio: 'ignore' },
-    ).unref();
     if (typeof onOpened === 'function') onOpened(bay);
     return { ok: true };
   } catch {
     return { ok: false, error: 'spawn' };
-  } finally {
-    opening.delete(bay);
   }
 }
 

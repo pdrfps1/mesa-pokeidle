@@ -17,7 +17,8 @@ function createHuntReader() {
     eventPokemonPct: 0,
     guildRankPct: 0,
     guildBoostUntil: null,
-    twitchPct: 0,
+    twitchPctBase: 0,
+    twitchXpAte: 0,
     activeId: null,
     pokemons: new Map(),
     hunts: [],
@@ -156,12 +157,15 @@ function createHuntReader() {
   }
 
   function applyTwitch(twitch) {
-    if (twitch.assistindo === false) { state.twitchPct = 0; return; }
-    const current = pct(twitch.pctAtual);
-    const fallback = pct(twitch.pct);
-    if (twitch.assistindo === true) state.twitchPct = current != null ? current : (fallback != null ? fallback : 0);
-    else if (current != null) state.twitchPct = current;
-    else if (fallback != null) state.twitchPct = fallback;
+    if (Object.prototype.hasOwnProperty.call(twitch, 'pct')) state.twitchPctBase = pct(twitch.pct) ?? 0;
+    if (twitch.bonus && typeof twitch.bonus === 'object') {
+      state.twitchXpAte = Number.isInteger(twitch.bonus.xp) && twitch.bonus.xp > 0 ? twitch.bonus.xp : 0;
+    }
+  }
+
+  // O bônus só vale até o fim do prazo, medido no relógio do servidor.
+  function twitchPctNow() {
+    return state.twitchXpAte > Date.now() + state.serverOffsetMs ? state.twitchPctBase : 0;
   }
 
   function applyEstado(estado, initializeHunt) {
@@ -184,7 +188,18 @@ function createHuntReader() {
     if (estado.guild && typeof estado.guild === 'object' && Number.isInteger(estado.guild.boostAte)) {
       state.guildBoostUntil = estado.guild.boostAte;
     }
-    if (estado.twitch && typeof estado.twitch === 'object') applyTwitch(estado.twitch);
+    // welcome traz o estado completo: o bônus anterior não vale antes de aplicar o novo.
+    if (initializeHunt) {
+      state.twitchPctBase = 0;
+      state.twitchXpAte = 0;
+    }
+    if (Object.prototype.hasOwnProperty.call(estado, 'twitch')) {
+      if (estado.twitch && typeof estado.twitch === 'object') applyTwitch(estado.twitch);
+      else {
+        state.twitchPctBase = 0;
+        state.twitchXpAte = 0;
+      }
+    }
     if (Number.isInteger(estado.centroLivreEm)) state.centroLivreEm = estado.centroLivreEm;
     if (estado.loja && typeof estado.loja === 'object') {
       if (typeof estado.loja.vip === 'boolean') state.vipFlag = estado.loja.vip;
@@ -254,6 +269,7 @@ function createHuntReader() {
     applyBattle,
     takeHunts,
     vipNow,
+    twitchPctNow,
     activeSummary,
     isDirty: () => catalogDirty,
     clearDirty: () => { catalogDirty = false; },
