@@ -12,6 +12,8 @@ const INTERVALO_RESGATE_MS = 20000;
 const JANELA_GANHO_MS = 1500000;
 const PAGINA_VELHA_MS = 15000;
 const MOTIVOS_PAGINA = ['sem-resumo', 'sem-centro', 'sem-recompensa', 'recompensa-ambigua', 'sem-botao', 'indisponivel', 'pede-texto', 'tempo', 'ocupado', 'outro'];
+// Travas de quem não deixou clicar no Redeem (lista fechada). Qualquer outro valor vira ''.
+const TRAVAS_PAGINA = ['sem-dedicado', 'fora-do-centro', 'cartao', 'outro-cartao', 'texto-solto', 'titulos', 'resto', 'descricao', 'custo'];
 const VISTOS_MAX = 8;
 const VISTOS_TAMANHO = 45;
 const LOGIN_RE = /^[A-Za-z0-9_]{1,25}$/;
@@ -299,10 +301,12 @@ function limparResultado(raw) {
   if (raw.estado !== 'falhou') return null;
   const motivo = MOTIVOS_PAGINA.includes(raw.motivo) ? raw.motivo : 'outro';
   const fase = FASES_PAGINA.includes(raw.fase) ? raw.fase : '';
+  const trava = TRAVAS_PAGINA.includes(raw.trava) ? raw.trava : '';
   return {
     id,
     estado: 'falhou',
     motivo,
+    trava,
     vistos: limparVistos(raw.vistos),
     fase,
     clicou: raw.clicou === true,
@@ -325,6 +329,7 @@ module.exports = {
   JANELA_GANHO_MS,
   PAGINA_VELHA_MS,
   MOTIVOS_PAGINA,
+  TRAVAS_PAGINA,
   loginValido,
   parsePontos,
   mesmoLogin,

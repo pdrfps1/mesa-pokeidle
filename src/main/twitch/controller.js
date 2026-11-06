@@ -340,7 +340,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, cabecalho, classes }) {
+  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, cabecalho, classes }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -354,6 +354,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         em: t,
         estado: 'falhou',
         motivo,
+        trava: typeof trava === 'string' ? trava : '',
         vistos: Array.isArray(vistos) ? vistos : [],
         fase: fase || '',
         clicou: clicou === true,

@@ -164,6 +164,11 @@ function liveBonusUltimo(ultimo) {
   if (ultimo.estado === 'ok') return `${nome} às ${hora}`;
   if (ultimo.estado === 'falhou') {
     let base = `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
+    if (ultimo.motivo === 'sem-botao') {
+      base += `, trava=${typeof ultimo.trava === 'string' && ultimo.trava ? ultimo.trava : '-'}`;
+      const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
+      return dialogos ? `${base}. ${dialogos}` : base;
+    }
     if (ultimo.motivo === 'sem-centro') {
       base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;
       const pistas = Array.isArray(ultimo.pistas) ? ultimo.pistas.filter((p) => typeof p === 'string' && p) : [];

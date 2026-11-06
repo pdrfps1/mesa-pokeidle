@@ -1,5 +1,83 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · resgate por custo quando a lista mostra só o custo
+
+> Quando a lista do centro mostra só o custo de cada recompensa, a Mesa agora abre os cards desse custo, confere o título no detalhe e só então clica em Redeem. O clique continua protegido pelas mesmas travas.
+
+### Destaques do patch
+- **Fallback por custo:** se a busca por título não acha nada e há card com o custo pedido, a Mesa tenta até 3 cards.
+- **Conferência no detalhe:** o título exato precisa aparecer no detalhe do card antes de qualquer clique em Redeem.
+- **Diagnóstico de trava:** o resultado `sem-botao` diz qual trava barrou o botão Redeem.
+
+### Bônus Twitch
+*Quando a lista mostra só o custo, a Mesa abre o card certo antes de resgatar.*
+
+**Por quê.** A captura real mostrou que os cards da lista do centro (Power-ups & Rewards) exibem só ícone e custo (300, 500, 900). O título aparece só no detalhe, depois do clique no card, junto com o botão Redeem. A busca por título na lista nunca casava, e a falha saía como `sem-recompensa`.
+
+- `sem-recompensa` (sem título na lista) ⇒ se há card com o custo pedido, `resgatarPorCusto` abre cada card (no máximo 3)
+- card aberto ⇒ `folhaTitulo` confere se o título exato aparece no detalhe, fora de qualquer card; só então segue para `confirmarResgate`
+- card que não confere ⇒ fecha o centro, reabre pelo botão de pontos e tenta o próximo card
+- sem card compatível, ou se o fechamento não tiver efeito ⇒ para sem clicar mais
+- `sem-botao` ⇒ traz `trava`, o motivo que bloqueou o Redeem (`motivoEscopo`, lista fechada `TRAVAS_PAGINA`)
+
+**NOVO**
+- clique em cards do custo (no máximo 3) e, quando o título não confere, reabrir o centro pelo botão de pontos
+- resultado `sem-botao`: campo `trava`, com um dos valores `fora-do-centro`, `cartao`, `outro-cartao`, `texto-solto`, `titulos`, `resto`, `descricao`, `custo`, `sem-dedicado` (qualquer outro valor vira vazio)
+- resultado `sem-recompensa`: `vistos` passa a ter só custos (até 8, sem repetição); nunca título nem texto de card
+- painel: a linha `Diag` do `sem-botao` mostra `trava=…` quando o resultado traz o campo
+
+**NÃO MUDOU**
+- a busca por título continua sendo a primeira tentativa
+- o Redeem continua protegido pelas mesmas travas: dentro do centro, cartão único, escopo com título exato único
+- nenhum seletor foi removido
+- espera de 6 s e `botaoPontos` continuam iguais
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `acharBotaoResgatarComTrava`, `motivoEscopo`, `cardsPorCusto`, `folhaTitulo`, `custosVistos`, `confirmarResgate`, `resgatarPorCusto`
+- `dashboard/src/main/twitch/points.js`: `TRAVAS_PAGINA` e `trava` em `limparResultado`
+- `dashboard/src/main/twitch/controller.js`: repasse de `trava` ao último resgate
+- `dashboard/src/preload/twitch-page.js`: repasse de `trava` no resultado
+- `dashboard/src/renderer/live-bonus.js`: trecho `trava=…` na linha `Diag` do `sem-botao`
+
+### Testes
+- `npm test` em `dashboard/`: **423** passaram, 0 falharam, em execução de 2026-11-06 (suíte inteira do projeto).
+- A contagem é da suíte inteira, que inclui testes ainda não commitados. O código desta entrega ainda não está commitado: a diferença está no working tree contra `5e0787b`.
+
+### Não confirmado
+- **Atributos reais dos cards:** o card do custo é reconhecido por botão com um único número igual ao custo. Não foi confirmado no DOM real da Twitch.
+- **Seletor real do Redeem:** o seletor dedicado continua sem conferência numa conta real.
+- **Cabeçalho e rodapé dentro do diálogo:** não confirmados.
+- **Botão de pontos com o detalhe aberto:** não se sabe se ele fecha o detalhe e reabre a lista.
+- **Custo com formato «1K»:** não tratado; só número puro é comparado.
+- **DOM real:** os testes usam DOM simulado. Nada disto foi verificado na Twitch.
+
+### Problemas conhecidos
+- Se o saldo aparecer no detalhe, a trava `custo` bloqueia o Redeem.
+- Provável `sem-botao` na primeira rodada real.
+- Próximo passo: repetir o resgate na Baía 2 e colar a linha `Diag` e a linha de falha com `trava`.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · resgate por custo quando a lista mostra só o custo**
+
+Resumo: quando a lista do centro mostra só o custo, a Mesa abre o card do custo, confere o título no detalhe e só então clica em Redeem. As travas do Redeem não mudaram.
+
+**Resgate de pontos**
+- [Novo] Sem título na lista, a Mesa tenta até 3 cards do custo pedido.
+- [Novo] O card só segue para o Redeem se o título exato aparece no detalhe.
+- [Ajuste] Card que não confere: a Mesa fecha o centro, reabre pelo botão de pontos e tenta o próximo.
+- [Ajuste] Sem card compatível, ou se o fechamento não tiver efeito, a Mesa para sem clicar mais.
+- [Correção] Antes: `sem-recompensa` por busca de título que nunca casava na lista de custo. Depois: a Mesa abre o card e confere o título no detalhe.
+
+**Diagnóstico**
+- [Novo] `sem-botao` traz `trava`, o motivo que bloqueou o botão Redeem.
+- [Ajuste] `sem-recompensa` traz em `vistos` só os custos, nunca títulos nem texto de card.
+
+**Conhecidos**
+- Se o saldo aparecer no detalhe, a trava de custo bloqueia o Redeem.
+- Provável `sem-botao` na primeira rodada real. A validação só aparece na Baía 2.
+- DOM real da Twitch não verificado; os testes usam DOM simulado.
+
 ## 2026-11-06 — Patch «Vigília» · centro de recompensas reconhecido pelo cabeçalho
 
 > O centro de recompensas agora é reconhecido também quando o diálogo que contém o cabeçalho `#channel-points-reward-center-header` está aberto. Os seletores antigos continuam com prioridade. O clique não mudou.

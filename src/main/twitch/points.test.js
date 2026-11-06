@@ -308,13 +308,23 @@ describe('limparFatos e limparResultado', () => {
   });
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
-    const base = { vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], cabecalho: null, classes: [] };
+    // trava: '' entrou no resultado de falha (campo novo); o resto do formato não muda.
+    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], cabecalho: null, classes: [] };
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
     assert.equal(P.limparResultado({ id: '5', estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 0, estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 5, estado: 'desconhecido' }), null);
+  });
+
+  it('trava: valor da lista fechada passa; valor fora da lista vira vazio', () => {
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', trava: 'fora-do-centro' }).trava, 'fora-do-centro');
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', trava: 'custo' }).trava, 'custo');
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', trava: 'texto livre da página' }).trava, '');
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', trava: 7 }).trava, '');
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao' }).trava, '');
+    assert.ok(P.TRAVAS_PAGINA.includes('sem-dedicado'));
   });
 
   it('motivos novos do centro passam como estão', () => {

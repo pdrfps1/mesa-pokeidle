@@ -320,6 +320,19 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     assert.equal(dd.textContent.includes('Antes do clique'), false);
   });
 
+  it('sem-botao com trava fora-do-centro vinda de limparResultado: mostra trava=fora-do-centro, só em textContent', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro', dialogos: [] };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.match(dd.textContent, /, trava=fora-do-centro$/);
+    assert.equal(dd.innerHTML, undefined);
+  });
+
   it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
     const em = Date.now() - 1000;
     montar(snap(quatro({ 0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [] } } })));

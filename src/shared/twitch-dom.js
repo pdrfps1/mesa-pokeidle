@@ -414,36 +414,51 @@ var MESA_TWITCH_DOM = (function () {
     return tamanhoDe(escopo) > lido;
   }
 
+  // Motivo de o escopo não conferir, ou '' se confere. Os motivos são TRAVAS_PAGINA (sem o '').
   // O escopo mostra uma recompensa só: o título pedido uma vez, inteiro, no máximo um custo, o pedido, e no máximo uma descrição.
-  function escopoConfere(escopo, dedicado, alvo, custo) {
+  function motivoEscopo(escopo, dedicado, alvo, custo) {
     const texto = (el) => normal(textoDe(el));
     const eTitulo = (el) => texto(el) === alvo
       || (texto(el).startsWith(alvo) && mesmoCusto(texto(el).slice(alvo.length), custo));
     const folhas = folhasDe(escopo, dedicado);
-    if (temTextoSolto(escopo, dedicado, folhas)) return false;
+    if (temTextoSolto(escopo, dedicado, folhas)) return 'texto-solto';
     const titulos = folhas.filter(eTitulo);
-    if (titulos.length !== 1) return false;
+    if (titulos.length !== 1) return 'titulos';
     const outras = folhas.filter((el) => !eTitulo(el) && !NAVEGACAO.test(texto(el)));
     const custos = outras.filter((el) => SO_NUMERO.test(texto(el)));
     const resto = outras.filter((el) => !SO_NUMERO.test(texto(el)));
     const total = custos.length + (texto(titulos[0]) === alvo ? 0 : 1);
-    if (total > 1 || resto.length > 1) return false;
-    if (resto.length && !eDescricao(texto(resto[0]))) return false;
-    if (custos.some((el) => !mesmoCusto(texto(el), custo) || custoDeOutroBloco(el, alvo))) return false;
-    return total === 1 || numerosDe(textoDe(dedicado)).includes(Number(custo));
+    if (total > 1) return 'custo';
+    if (resto.length > 1) return 'resto';
+    if (resto.length && !eDescricao(texto(resto[0]))) return 'descricao';
+    if (custos.some((el) => !mesmoCusto(texto(el), custo) || custoDeOutroBloco(el, alvo))) return 'custo';
+    return total === 1 || numerosDe(textoDe(dedicado)).includes(Number(custo)) ? '' : 'custo';
   }
 
+  function escopoConfere(escopo, dedicado, alvo, custo) {
+    return motivoEscopo(escopo, dedicado, alvo, custo) === '';
+  }
+
+  // Mesma decisão de acharBotaoResgatar, com a trava de quem não deixou clicar (lista fechada, TRAVAS_PAGINA).
   // Só o seletor dedicado, dentro do centro. Se ele está num cartão, o cartão decide. Se não, o centro
   // inteiro tem de mostrar uma recompensa só (O-3). Na dúvida, nada é clicado.
-  function acharBotaoResgatar(doc, custo, titulo, centroDado) {
+  function acharBotaoResgatarComTrava(doc, custo, titulo, centroDado) {
     const centro = centroDado || primeiro(doc, SELETORES.centro);
     const dedicado = primeiro(doc, SELETORES.resgatar);
     const alvo = normal(titulo);
-    if (!dedicado || !centro || !alvo || dedicado === centro || !dentroDe(dedicado, centro)) return null;
+    if (!dedicado || !centro || !alvo || dedicado === centro) return { botao: null, trava: 'sem-dedicado' };
+    if (!dentroDe(dedicado, centro)) return { botao: null, trava: 'fora-do-centro' };
     const cartao = cartaoDoBotao(centro, dedicado);
-    if (cartao) return escopoConfere(cartao, dedicado, alvo, custo) ? dedicado : null;
-    if (temOutroCartao(centro, dedicado)) return null;
-    return escopoConfere(centro, dedicado, alvo, custo) ? dedicado : null;
+    if (cartao) {
+      return escopoConfere(cartao, dedicado, alvo, custo) ? { botao: dedicado, trava: '' } : { botao: null, trava: 'cartao' };
+    }
+    if (temOutroCartao(centro, dedicado)) return { botao: null, trava: 'outro-cartao' };
+    const motivo = motivoEscopo(centro, dedicado, alvo, custo);
+    return motivo ? { botao: null, trava: motivo } : { botao: dedicado, trava: '' };
+  }
+
+  function acharBotaoResgatar(doc, custo, titulo, centroDado) {
+    return acharBotaoResgatarComTrava(doc, custo, titulo, centroDado).botao;
   }
 
   function esperar(fn, ms, passo) {
@@ -507,6 +522,133 @@ var MESA_TWITCH_DOM = (function () {
     await deps.pausa(300);
   }
 
+  // Botões do centro sem o botão de confirmação (SELETORES.resgatar).
+  function botoesSemConfirmacao(centro) {
+    const confirmacao = Array.from(centro.querySelectorAll(SELETORES.resgatar[0]));
+    return Array.from(centro.querySelectorAll('button,[role="button"]')).filter((b) => !confirmacao.includes(b));
+  }
+
+  // Cards do custo: botões com exatamente um número, igual ao custo pedido. Sem candidato aninhado. Ordem do DOM.
+  function cardsPorCusto(centro, custo) {
+    if (!centro) return [];
+    const alvo = Number(custo);
+    const achados = botoesSemConfirmacao(centro).filter((b) => {
+      const nums = numerosDe(normal(textoDe(b)));
+      return nums.length === 1 && nums[0] === alvo;
+    });
+    return maisInternos(achados);
+  }
+
+  // Folha com o título pedido, fora de qualquer card. Só booleano: nenhum texto sai daqui.
+  function folhaTitulo(centro, titulo, cards) {
+    const alvo = normal(titulo);
+    if (!centro || !alvo) return false;
+    const dentroDeCard = (f) => (cards || []).some((c) => dentroDe(f, c));
+    return Array.from(centro.querySelectorAll('*')).some((f) => !Array.from(f.children || []).length
+      && normal(textoDe(f)) === alvo && !dentroDeCard(f));
+  }
+
+  const CUSTOS_VISTOS_MAX = 8;
+
+  // Custos vistos no centro: botões que só trazem um número, sem repetição, até 8. Nunca título nem texto de card.
+  function custosVistos(centro) {
+    if (!centro) return [];
+    const out = [];
+    for (const b of botoesSemConfirmacao(centro)) {
+      const t = normal(textoDe(b));
+      if (!SO_NUMERO.test(t)) continue;
+      const nums = numerosDe(t);
+      if (nums.length !== 1) continue;
+      const s = String(nums[0]);
+      if (!out.includes(s)) out.push(s);
+      if (out.length >= CUSTOS_VISTOS_MAX) break;
+    }
+    return out;
+  }
+
+  // Trecho pós-clique do resgate, usado pelo item achado e pelo card conferido: campo de texto, Redeem com custo, clique, fechar.
+  // Só aqui sai o clique no Redeem.
+  async function confirmarResgate(doc, pedido, deps, achaCentro, semCentro) {
+    const aberto = achaCentro();
+    if (!aberto) return semCentro('confirmar');
+    if (primeiro(aberto, SELETORES.campoTexto)) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'pede-texto' };
+    }
+    let ultimo = { botao: null, trava: 'sem-dedicado' };
+    const botao = await deps.esperar(() => {
+      ultimo = acharBotaoResgatarComTrava(doc, pedido.custo, pedido.titulo, achaCentro());
+      return ultimo.botao;
+    }, 5000);
+    if (!botao) {
+      const dialogos = dialogosDiag(doc, pedido.titulo, null);
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: ultimo.trava, dialogos };
+    }
+    if (desabilitado(botao)) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'indisponivel' };
+    }
+    clicar(botao);
+    await deps.pausa(1500);
+    await fecharCentro(doc, deps);
+    return { estado: 'clicado', motivo: '' };
+  }
+
+  const MAX_TENTATIVAS_CARD = 3;
+
+  // Fallback por custo: abre cada card do custo, confere o título no detalhe e só então segue para o Redeem.
+  // Card que não confere: fecha, reabre a lista e vai ao próximo. Nenhum clique além disso.
+  async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro) {
+    const { titulo, custo } = pedido;
+    const diag = () => ({
+      estado: 'falhou',
+      motivo: 'sem-recompensa',
+      vistos: custosVistos(achaCentro()),
+      dialogos: dialogosDiag(doc, titulo, null),
+    });
+    const todos = cardsPorCusto(achaCentro(), custo);
+    if (!todos.length) {
+      const r = diag();
+      await fecharCentro(doc, deps);
+      return r;
+    }
+    if (todos.every(desabilitado)) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'indisponivel' };
+    }
+    let indice = 0;
+    for (let tentativas = 0; tentativas < MAX_TENTATIVAS_CARD; tentativas += 1) {
+      const atuais = cardsPorCusto(achaCentro(), custo);
+      const habilitados = atuais.filter((c) => !desabilitado(c));
+      if (indice >= habilitados.length) break;
+      if (folhaTitulo(achaCentro(), titulo, atuais)) {
+        const r = diag();
+        await fecharCentro(doc, deps);
+        return r;
+      }
+      if (!achaCentro()) return semCentro('confirmar');
+      // Diagnóstico tirado com a lista aberta, antes do clique no card: depois de fechar o centro, custosVistos sairia vazio.
+      const diagLista = diag();
+      clicar(habilitados[indice]);
+      await deps.esperar(() => folhaTitulo(achaCentro(), titulo, atuais), 3000);
+      if (!achaCentro()) return semCentro('confirmar');
+      if (folhaTitulo(achaCentro(), titulo, atuais)) return confirmarResgate(doc, pedido, deps, achaCentro, semCentro);
+      await fecharCentro(doc, deps);
+      const fechou = !!(await deps.esperar(() => !achaCentro(), 2000));
+      // Sem fechamento, aborta: nenhum clique extra no resumo nem em card.
+      if (!fechou) return diag();
+      // Sem próximo candidato, não reabre: o centro já está fechado.
+      if (!(indice + 1 < habilitados.length && tentativas < MAX_TENTATIVAS_CARD - 1)) return diagLista;
+      clicar(primeiro(doc, SELETORES.botaoPontos));
+      if (!(await deps.esperar(achaCentro, 6000))) return semCentro('abrir');
+      indice += 1;
+    }
+    const r = diag();
+    await fecharCentro(doc, deps);
+    return r;
+  }
+
   // Fluxo do resgate: abre o centro, acha a recompensa pelo título, clica e confirma no botão de custo.
   async function resgatar(doc, pedido, deps) {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
@@ -538,42 +680,26 @@ var MESA_TWITCH_DOM = (function () {
     const centro = await deps.esperar(achaCentro, 6000);
     if (!centro) return semCentro('abrir');
     let busca = { achado: null, ambigua: false };
+    // Para quando acha pelo título ou quando já há card do custo pedido (o título só aparece depois de abrir o card).
     await deps.esperar(() => {
       busca = buscarRecompensa(doc, pedido.titulo, achaCentro());
-      return busca.achado;
+      return busca.achado || (!busca.ambigua && cardsPorCusto(achaCentro(), pedido.custo).length > 0);
     }, 6000);
     if (!achaCentro()) return semCentro('buscar');
     const item = busca.achado;
-    if (!item) {
+    if (!item && busca.ambigua) {
       const vistos = titulosVistos(achaCentro());
       await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: busca.ambigua ? 'recompensa-ambigua' : 'sem-recompensa', vistos };
+      return { estado: 'falhou', motivo: 'recompensa-ambigua', vistos };
     }
+    if (!item) return resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro);
     if (desabilitado(item)) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };
     }
     if (clicar(item)) clicou = true;
     await deps.pausa(600);
-    const aberto = achaCentro();
-    if (!aberto) return semCentro('confirmar');
-    if (primeiro(aberto, SELETORES.campoTexto)) {
-      await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: 'pede-texto' };
-    }
-    const botao = await deps.esperar(() => acharBotaoResgatar(doc, pedido.custo, pedido.titulo, achaCentro()), 5000);
-    if (!botao) {
-      await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: 'sem-botao' };
-    }
-    if (desabilitado(botao)) {
-      await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: 'indisponivel' };
-    }
-    clicar(botao);
-    await deps.pausa(1500);
-    await fecharCentro(doc, deps);
-    return { estado: 'clicado', motivo: '' };
+    return confirmarResgate(doc, pedido, deps, achaCentro, semCentro);
   }
 
   return {
