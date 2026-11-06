@@ -62,7 +62,7 @@ npm install
 npm start
 ```
 
-`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 294 passando em 2026-11-05). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
+`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 309 passando em 2026-11-05). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
 
 Instalação guiada no Windows: scripts `instalar.cmd` / `instalar.ps1` na raiz do repositório (ver `README.md`).
 

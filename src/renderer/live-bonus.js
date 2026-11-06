@@ -146,7 +146,9 @@ function liveBonusFrase(bay) {
 const LIVE_BONUS_NAVEGADOR = {
   aberto: () => 'O navegador abriu. Entre na Twitch e feche o navegador. O login entra sozinho nesta baía.',
   importando: () => 'Copiando o login do navegador.',
-  ok: () => 'Login copiado do navegador.',
+  ok: (auto) => (auto
+    ? 'Login copiado do navegador. «Assistir e resgatar sozinho» ficou ligado nesta baía.'
+    : 'Login copiado do navegador.'),
   pending: () => 'O login no navegador ainda não terminou. Entre na Twitch, feche o navegador e clique em «Já entrei».',
   'no-browser': () => 'Instale o Microsoft Edge ou o Google Chrome para entrar pelo navegador.',
   'browser-open': () => 'Feche a janela do navegador de login desta baía antes de clicar em «Já entrei».',
@@ -154,13 +156,31 @@ const LIVE_BONUS_NAVEGADOR = {
   'perfil-em-uso': () => 'Feche o navegador de login desta baía para apagar o perfil dele.',
 };
 
-function liveBonusDica(nav, agora) {
+function liveBonusDica(nav, agora, auto) {
   if (!nav || !nav.estado) return { texto: '', parado: false };
   if (nav.estado === 'ok' && agora - (nav.em || 0) > 60000) return { texto: '', parado: false };
   const chave = nav.estado === 'falhou' ? (nav.motivo || 'failed') : nav.estado;
   const frase = LIVE_BONUS_NAVEGADOR[chave] || LIVE_BONUS_NAVEGADOR.failed;
   const parado = nav.estado === 'falhou' && (chave === 'failed' || chave === 'perfil-em-uso');
-  return { texto: frase(), parado };
+  return { texto: frase(auto), parado };
+}
+
+// live:status e live:get trazem o snapshot inteiro; as rotas twitch:* devolvem só o bloco da Twitch.
+function liveBonusJuntar(snap, data) {
+  return data.twitch ? data : { ...snap, twitch: data };
+}
+
+// O "ok" fica no snapshot até o Sair: só um horário novo conta. Devolve as baías e avança o marco.
+function liveBonusLoginsNovos(tw, vistoEm) {
+  const novas = [];
+  const bays = tw && Array.isArray(tw.bays) ? tw.bays : [];
+  bays.forEach((bay, i) => {
+    const nav = bay && bay.navegador;
+    if (!nav || nav.estado !== 'ok' || !(nav.em > vistoEm[i])) return;
+    vistoEm[i] = nav.em;
+    novas.push(i);
+  });
+  return novas;
 }
 
 function liveBonusKickKey(lista) {
@@ -172,6 +192,8 @@ function mountLiveBonus(parent) {
   let snap = null;
   let kickKey = null;
   const linhas = [];
+  // Um "ok" anterior a esta tela não conta: recarregar não religa o interruptor.
+  const loginVistoEm = new Array(4).fill(Date.now());
 
   const root = el('article', 'settings-wide card card-border mesa-panel live-bonus');
   root.append(
@@ -368,7 +390,7 @@ function mountLiveBonus(parent) {
     linha.navegador.hidden = !semLogin;
     linha.jaEntrei.hidden = !semLogin;
     linha.entrar.hidden = !semLogin;
-    const dica = liveBonusDica(bay.navegador, Date.now());
+    const dica = liveBonusDica(bay.navegador, Date.now(), cfgBay.twitchAuto === true);
     if (linha.dica.textContent !== dica.texto) linha.dica.textContent = dica.texto;
     linha.dica.hidden = !dica.texto;
     linha.dica.classList.toggle('is-parado', dica.parado);
@@ -414,9 +436,18 @@ function mountLiveBonus(parent) {
     paintKick();
   }
 
+  function ligarAposLogin() {
+    const novas = liveBonusLoginsNovos(snap.twitch, loginVistoEm)
+      .filter((i) => cfg.bays[i].twitchAuto !== true);
+    if (!novas.length) return;
+    for (const i of novas) cfg.bays[i].twitchAuto = true;
+    liveBonusSalvar();
+  }
+
   function aplicar(data) {
     if (!data) return;
-    snap = data;
+    snap = liveBonusJuntar(snap, data);
+    ligarAposLogin();
     paint();
   }
 
@@ -435,4 +466,8 @@ function mountLiveBonus(parent) {
 
 function paintLiveBonus() {
   if (liveBonusView) liveBonusView.paint();
+}
+
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { liveBonusDica, liveBonusJuntar, liveBonusLoginsNovos, mountLiveBonus };
 }

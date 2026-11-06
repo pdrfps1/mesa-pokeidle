@@ -8,7 +8,7 @@
 - **Pontos do canal no lugar do chat:** a Mesa resgata a recompensa de 1 hora pelo título, sem entrar no chat da Twitch.
 - **Resgate só na conta certa:** a Mesa só resgata quando a conta logada na Twitch é a mesma vinculada no jogo.
 - **Um resgate por vez:** sem confirmação do jogo em 3 min, conta como falha; depois de 3 falhas, a baía pausa por 60 min.
-- **Painel novo em Configurações:** preferências globais e uma linha por baía. O resgate automático vem desligado.
+- **Painel novo em Configurações:** preferências globais e uma linha por baía. O resgate automático vem desligado e liga sozinho na baía quando o login pelo navegador é copiado.
 
 ### Bônus Twitch
 *A janela da Twitch fica escondida e sem som, numa live oficial de cada baía.*
@@ -34,7 +34,7 @@
 
 ### Configurações
 - **«Bônus Twitch (chat)» ⇒ «Bônus Twitch»:** preferências globais no topo, com tipos de recompensa (XP, Captura e Shiny) e limiar de resgate (2, 5, 10 ou 15 min; padrão 5).
-- **Por baía:** interruptor «Assistir e resgatar sozinho», desligado por padrão, com a situação e o motivo quando a baía não resgata.
+- **Por baía:** interruptor «Assistir e resgatar sozinho», desligado por padrão, com a situação e o motivo quando a baía não resgata. Ele liga sozinho quando a cópia do login dá certo, por «Já entrei» ou pela importação automática; a dica avisa. Desligado à mão, só volta com um login novo. «Entrar na janela da Mesa» não liga o interruptor.
 - **Kick ao vivo:** continua, agora no fim do painel.
 
 ### Auto-hunt
@@ -51,7 +51,7 @@
 - `dashboard/src/shared/catalog.js` e `live-catalog.js`: preferências da Twitch e bloco novo
 
 ### Testes
-- `npm test` em `dashboard/`: **294** passaram, **0** falha. Eram 69; 29 saíram com OAuth e IRC, e os testes novos entraram no lugar.
+- `npm test` em `dashboard/`: **309** passaram, **0** falha. Eram 69; 29 saíram com OAuth e IRC, e os testes novos entraram no lugar.
 
 ### Pré-requisito
 - Vincular a Twitch no jogo, na linha Bônus Twitch. Sem vínculo, a Mesa não resgata.
