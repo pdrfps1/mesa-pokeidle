@@ -18,6 +18,8 @@ Os pontos saem de a Mesa assistir à live do canal numa janela oculta da Twitch 
 
 O resgate só clica no botão de confirmar quando o centro de recompensas está aberto de verdade: só seletores específicos liberam clique; diálogo genérico nunca é usado como centro, nem quando contém a recompensa. Os motivos novos são `sem-centro` (a lista não abriu) e `recompensa-ambigua` (mais de uma recompensa com o título, sem clique); o painel mostra «Vi: …» com os títulos vistos. Os seletores do centro ainda não foram confirmados numa conta real.
 
+O diagnóstico do resgate (linha `Diag:` no painel) traz `botoesResumo`: até 4 botões do resumo, cada um com `data-test-selector`, `data-a-target` e `aria-label`, sanitizados (controle removido, dígito vira `#`, corte de 40 caracteres; nunca lê `textContent`). `saldo#` é o índice do seletor de saldo que casou, com `0` para o primário (`copo-balance-string`) e `-1` se nenhum casou. `centro#` é o índice do seletor de centro que casou e vem da leitura periódica de 3 s do preload, não do momento do clique. Quando o resgate falha como `sem-centro`, o resultado traz `fase` (`abrir`, `buscar` ou `confirmar`, onde faltou o centro), `clicou` (true se houve clique no resumo ou no item) e `pistas`: até 8 elementos que podem ser o centro, no formato `tag#id[data-test-selector][role]`, só leitura, nunca clicados. O painel mostra essas pistas como «Vi no DOM: …».
+
 ## Três telas
 
 Navegação por **dock** DaisyUI (`nav.dock`) na **faixa inferior** da janela, dentro da grade `.app` (`grid-template-rows: minmax(0, 1fr) auto` em `app.css`): **conteúdo** (`.canvas`, linha 1) e **dock** (linha 2). O dock usa **`position: static`** — não flutua (`fixed`) por cima do jogo. Três botões **Mesa**, **Espera** e **Ajustes** com ícones outline de traço (`icons.js`) **e** rótulo visível (`.dock-label`); tela ativa com **`dock-active`** (estilo DaisyUI). Sem coração, sem desligar o app; a função **`mesaLogoSvg()`** (`icons.js`) **não** entra no dock. `<nav>` com `aria-label` «Mesa». Em janelas estreitas (`max-width: 700px`), o dock **permanece** no rodapé como bandeja de 52px, sem régua, com placa deslizante sob a aba ativa; **não há** trilho lateral nem botão «Recolher trilho» na UI — `cfg.chrome.railExpanded` ainda persiste em `mesa-config.json` (`shell-fold.js` só reage se `ui.railFoldBtn` existir). **Escuro** / **Claro** da casca (`shellTheme`) ficam só em Ajustes → **Preferências de Aparência** → **Tema**.
@@ -74,7 +76,7 @@ npm install
 npm start
 ```
 
-`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 342 passando em 2026-11-06). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
+`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 364 passando em 2026-11-06, suíte inteira, incluindo testes de arquivos ainda não commitados de outras sessões). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
 
 Instalação guiada no Windows: scripts `instalar.cmd` / `instalar.ps1` na raiz do repositório (ver `README.md`).
 

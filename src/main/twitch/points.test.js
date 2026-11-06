@@ -289,14 +289,27 @@ describe('limparFatos e limparResultado', () => {
     assert.equal(P.limparFatos({ saldoTexto: '\u0007 abc  ' }).saldoTexto, 'abc');
   });
 
+  it('diag: só as chaves fixas, número ou booleano; string e chave estranha somem', () => {
+    const f = P.limparFatos({
+      diag: { resumo: 'sim', botaoPontos: true, botoesNoResumo: 3, saldoSeletor: '0', saldoTamanho: 12, saldoLido: false, centroSeletor: -1, extra: 'segredo', texto: 'Saldo 1.234' },
+    });
+    assert.deepEqual(f.diag, { resumo: false, botaoPontos: true, botoesNoResumo: 3, saldoSeletor: -1, saldoTamanho: 12, saldoLido: false, centroSeletor: -1, botoesResumo: [] });
+    assert.equal(Object.values(f.diag).some((v) => typeof v === 'string'), false);
+  });
+
+  it('diag ausente ou que não é objeto dá null', () => {
+    assert.equal(P.limparFatos({}).diag, null);
+    assert.equal(P.limparFatos({ diag: 'texto' }).diag, null);
+  });
+
   it('fatos que não são objeto dão null', () => {
     assert.equal(P.limparFatos(null), null);
     assert.equal(P.limparFatos('x'), null);
   });
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', vistos: [] });
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', vistos: [] });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', vistos: [], fase: '', clicou: false, pistas: [] });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', vistos: [], fase: '', clicou: false, pistas: [] });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
     assert.equal(P.limparResultado({ id: '5', estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 0, estado: 'clicado' }), null);
@@ -306,6 +319,49 @@ describe('limparFatos e limparResultado', () => {
   it('motivos novos do centro passam como estão', () => {
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro' }).motivo, 'sem-centro');
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'recompensa-ambigua' }).motivo, 'recompensa-ambigua');
+  });
+
+  it('botoesResumo: sanitizado, até 4, não-string vira vazio, dígito vira #', () => {
+    const botoes = [
+      { dts: 'pts-7\u0001', alvo: 42, aria: 'Abrir 12' },
+      null,
+      { dts: 'a', alvo: 'b', aria: 'c' },
+      { dts: 'd', alvo: 'e', aria: 'f' },
+      { dts: 'extra', alvo: 'x', aria: 'y' },
+    ];
+    const diag = P.limparFatos({ diag: { botoesResumo: botoes } }).diag;
+    assert.equal(diag.botoesResumo.length, 4);
+    assert.deepEqual(diag.botoesResumo[0], { dts: 'pts-#', alvo: '', aria: 'Abrir ##' });
+    assert.deepEqual(diag.botoesResumo[1], { dts: '', alvo: '', aria: '' });
+    assert.deepEqual(P.limparFatos({ diag: { botoesResumo: 'nao' } }).diag.botoesResumo, []);
+  });
+
+  it('botoesResumo: corta em 40 caracteres e descarta chaves estranhas', () => {
+    const diag = P.limparFatos({ diag: { botoesResumo: [{ dts: 'x'.repeat(60), alvo: 'a', aria: 'b', texto: 'segredo' }] } }).diag;
+    assert.equal(diag.botoesResumo[0].dts.length, 40);
+    assert.deepEqual(Object.keys(diag.botoesResumo[0]).sort(), ['alvo', 'aria', 'dts']);
+    assert.equal(JSON.stringify(diag).includes('segredo'), false);
+  });
+
+  it('fase: só abrir, buscar ou confirmar; clicou só com true; pistas limpas e até 8', () => {
+    const lixo = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', fase: 'outra', clicou: 'sim', pistas: 'nao' });
+    assert.equal(lixo.fase, '');
+    assert.equal(lixo.clicou, false);
+    assert.deepEqual(lixo.pistas, []);
+    for (const fase of ['abrir', 'buscar', 'confirmar']) {
+      assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', fase, clicou: true }).fase, fase);
+    }
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true }).clicou, true);
+    const pistas = P.limparResultado({
+      id: 5,
+      estado: 'falhou',
+      motivo: 'sem-centro',
+      pistas: ['div#a\u0007b[dialog]', 'div#a\u0007b[dialog]', 42, 'x'.repeat(60), ...Array.from({ length: 9 }, (_, i) => `span${'abcdefghi'[i]}`)],
+    }).pistas;
+    assert.equal(pistas[0], 'div#ab[dialog]');
+    assert.equal(pistas[1], 'x'.repeat(40));
+    assert.equal(pistas.length, 8);
+    assert.equal(pistas.some((p) => /\d/.test(p)), false);
   });
 
   it('vistos: array de texto, controle removido, até 8 itens de 45 caracteres', () => {

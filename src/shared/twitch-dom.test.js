@@ -36,6 +36,9 @@ function el(props = {}) {
     get parentElement() {
       return this.parent;
     },
+    get tagName() {
+      return String(this.tag).toUpperCase();
+    },
     listas: {},
     onClick: null,
     getAttribute(nome) {
@@ -272,6 +275,168 @@ describe('resgatar', () => {
     const { d, ordem, deps } = cenario({ botaoDesabilitado: true });
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'indisponivel' });
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
+  });
+});
+
+describe('diag da leitura de fatos (sem texto da página)', () => {
+  it('conta seletores, botões e tamanho do saldo, sem nenhum texto', () => {
+    const resumo = el({ tag: 'div', textContent: 'Saldo secreto 1.234' });
+    resumo.listas.button = [el({ tag: 'button' }), el({ tag: 'button' }), el({ tag: 'button' })];
+    const mapa = doc({
+      [S.logado[0]]: el(),
+      [S.resumo[0]]: resumo,
+      [S.botaoPontos[0]]: el({ tag: 'button' }),
+      [S.saldo[0]]: el({ textContent: '1.234' }),
+      [S.centro[1]]: el(),
+    });
+    const diag = D.lerFatos(mapa, { pathname: '/x' }, null).fatos.diag;
+    assert.deepEqual(diag, {
+      resumo: true,
+      botaoPontos: true,
+      botoesNoResumo: 3,
+      botoesResumo: [
+        { dts: '', alvo: '', aria: '' },
+        { dts: '', alvo: '', aria: '' },
+        { dts: '', alvo: '', aria: '' },
+      ],
+      saldoSeletor: 0,
+      saldoTamanho: 5,
+      saldoLido: true,
+      centroSeletor: 1,
+    });
+    for (const [k, v] of Object.entries(diag)) if (k !== 'botoesResumo') assert.ok(typeof v === 'number' || typeof v === 'boolean');
+    const texto = JSON.stringify(diag);
+    assert.equal(texto.includes('secreto'), false);
+    assert.equal(texto.includes('1.234'), false);
+  });
+
+  it('página sem nada: tudo falso, zero ou -1, sem texto', () => {
+    const diag = D.lerFatos(doc({}), { pathname: '/x' }, null).fatos.diag;
+    assert.deepEqual(diag, {
+      resumo: false,
+      botaoPontos: false,
+      botoesNoResumo: 0,
+      botoesResumo: [],
+      saldoSeletor: -1,
+      saldoTamanho: 0,
+      saldoLido: false,
+      centroSeletor: -1,
+    });
+  });
+});
+
+describe('botões do resumo, fase e pistas do sem-centro', () => {
+  const esperarJa = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
+
+  it('botoesResumo: atributos curtos, dígito vira #, controle sai, textContent ignorado, máximo 4', () => {
+    const botoes = [0, 1, 2, 3, 4].map((i) => el({
+      tag: 'button',
+      textContent: 'SEGREDO 99',
+      attrs: { 'data-test-selector': `pts-${i}`, 'data-a-target': 'alvo\u0001x', 'aria-label': 'Abrir 12 itens' },
+    }));
+    const resumo = el({ tag: 'div' });
+    resumo.listas.button = botoes;
+    const diag = D.lerFatos(doc({ [S.botaoPontos[0]]: el({ tag: 'button' }), [S.resumo[0]]: resumo }), { pathname: '/x' }, null).fatos.diag;
+    assert.equal(diag.botoesResumo.length, 4);
+    assert.deepEqual(diag.botoesResumo[0], { dts: 'pts-#', alvo: 'alvox', aria: 'Abrir ## itens' });
+    assert.equal(JSON.stringify(diag).includes('SEGREDO'), false);
+  });
+
+  it('botoesResumo: corta em 40 caracteres e sem resumo fica vazio', () => {
+    const resumo = el({ tag: 'div' });
+    resumo.listas.button = [el({ tag: 'button', attrs: { 'aria-label': 'x'.repeat(60) } })];
+    const com = D.lerFatos(doc({ [S.resumo[0]]: resumo }), { pathname: '/x' }, null).fatos.diag;
+    assert.equal(com.botoesResumo[0].aria.length, 40);
+    const sem = D.lerFatos(doc({}), { pathname: '/x' }, null).fatos.diag;
+    assert.deepEqual(sem.botoesResumo, []);
+  });
+
+  it('fase confirmar: o centro some depois do clique no item', async () => {
+    const d = doc();
+    const centro = el();
+    const item = el({ tag: 'button', textContent: 'Bônus XP' });
+    item.onClick = () => { delete d.mapa[S.centro[0]]; };
+    centro.listas['button,[role="button"]'] = [item];
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => { d.mapa[S.centro[0]] = centro; };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [],
+    });
+    assert.equal(item.clicks, 1);
+  });
+
+  it('clicou=false quando o centro já estava aberto: não clica no resumo', async () => {
+    const d = doc();
+    const centro = el();
+    d.mapa[S.centro[0]] = centro;
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    d.mapa[S.botaoPontos[0]] = resumo;
+    let n = 0;
+    const deps = {
+      esperar: (fn) => {
+        n += 1;
+        // Centro some na busca (segunda espera).
+        if (n === 2) delete d.mapa[S.centro[0]];
+        return Promise.resolve(fn());
+      },
+      pausa: () => Promise.resolve(),
+    };
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), {
+      estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [],
+    });
+    assert.equal(resumo.clicks, 0);
+  });
+
+  it('centro já aberto antes do resgate: clique no item, centro some, clicou=true na fase confirmar', async () => {
+    const d = doc();
+    const centro = el();
+    const item = el({ tag: 'button', textContent: 'Bônus XP' });
+    item.onClick = () => { delete d.mapa[S.centro[0]]; };
+    centro.listas['button,[role="button"]'] = [item];
+    d.mapa[S.centro[0]] = centro;
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    d.mapa[S.botaoPontos[0]] = resumo;
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [],
+    });
+    assert.equal(item.clicks, 1);
+    assert.equal(resumo.clicks, 0);
+  });
+
+  it('role=dialog vira pista; o contador mostra só o clique no resumo', async () => {
+    const d = doc();
+    const alheio = el({ tag: 'div', attrs: { role: 'dialog' } });
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => { d.dialogos.push(alheio); };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'],
+    });
+    assert.equal(resumo.clicks, 1);
+    assert.equal(alheio.clicks, 0);
+  });
+
+  it('pistas: sem repetição, seletores com *= e id, e no máximo 8', async () => {
+    const d = doc();
+    const dup = el({ tag: 'section', id: 'reward-x', attrs: { 'data-test-selector': 'reward-center-1' } });
+    const dupDois = el({ tag: 'section', id: 'reward-x', attrs: { 'data-test-selector': 'reward-center-2' } });
+    const dialogos = Array.from({ length: 5 }, (_, i) => el({ tag: 'div', id: `reward-${'abcde'[i]}`, attrs: { role: 'dialog' } }));
+    const ids = Array.from({ length: 4 }, (_, i) => el({ tag: 'span', id: `reward-${'pqrs'[i]}` }));
+    d.querySelectorAll = (sel) => {
+      if (sel === '[data-test-selector*="reward" i]') return [dup, dupDois];
+      if (sel === '[role="dialog"]') return dialogos;
+      if (sel === '[id*="reward" i]') return ids;
+      return [];
+    };
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    // 5 diálogos + 1 seção (a segunda cai na mesma pista) + 4 ids = 10 candidatos, cortados em 8.
+    assert.equal(res.pistas.length, 8);
+    assert.equal(new Set(res.pistas).size, 8);
+    assert.equal(res.pistas.filter((p) => p === 'section#reward-x[reward-center-#]').length, 1);
+    assert.equal(res.pistas[0], 'div#reward-a[dialog]');
   });
 });
 
@@ -623,7 +788,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     // Pré-checagem clica o resumo (nenhum centro aberto); o painel genérico não entra na conta.
@@ -645,7 +810,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
@@ -683,7 +848,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -697,7 +862,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -730,7 +895,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
       pausa: () => Promise.resolve(),
     };
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [] });
     assert.equal(item.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -741,7 +906,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [] });
     assert.deepEqual(ordem, ['resumo']);
   });
 
@@ -757,7 +922,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { if (!d.dialogos.includes(generico)) d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
   });

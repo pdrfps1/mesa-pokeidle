@@ -280,6 +280,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         pausadoAte: ativas.length ? Math.max(...ativas) : 0,
         navegador: { estado: b.navegador.estado, motivo: b.navegador.motivo, em: b.navegador.em },
         situacao: erroPaginaRecente(b, t) && b.situacao === 'abrindo' ? 'erro-pagina' : b.situacao,
+        diag: pg && pg.diag ? pg.diag : null,
       };
     });
     return {
@@ -339,7 +340,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, vistos }) {
+  function resultado(i, { id, estado, motivo, vistos, fase, clicou, pistas }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -348,7 +349,16 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     }
     if (estado === 'falhou') {
       const t = agora();
-      b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'falhou', motivo, vistos: Array.isArray(vistos) ? vistos : [] };
+      b.ultimo = {
+        tipo: b.pendente.tipo,
+        em: t,
+        estado: 'falhou',
+        motivo,
+        vistos: Array.isArray(vistos) ? vistos : [],
+        fase: fase || '',
+        clicou: clicou === true,
+        pistas: Array.isArray(pistas) ? pistas : [],
+      };
       b.falhas = P.registrarFalha(b.falhas, b.pendente.tipo, t);
       b.pendente = null;
       b.ultimoResgateEm = t;

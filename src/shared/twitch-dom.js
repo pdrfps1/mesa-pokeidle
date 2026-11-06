@@ -91,6 +91,78 @@ var MESA_TWITCH_DOM = (function () {
     return '';
   }
 
+  // Diagnóstico: só diz se o seletor casou. Seletor que o DOM não aceita conta como não casou.
+  function casa(doc, sel) {
+    try { return !!doc.querySelector(sel); } catch { return false; }
+  }
+
+  // Texto curto de atributo para o diagnóstico: sem controle, dígito vira '#', até 40 caracteres.
+  function curto(v) {
+    return String(v || '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '').replace(/\d/g, '#').trim().slice(0, 40);
+  }
+
+  function atributo(el, nome) {
+    return el && typeof el.getAttribute === 'function' ? el.getAttribute(nome) : null;
+  }
+
+  // Botões do resumo, com os três atributos curtos de cada um. Nunca lê textContent.
+  function botoesDoResumo(resumo) {
+    if (!resumo) return [];
+    return Array.from(resumo.querySelectorAll('button')).slice(0, 4).map((b) => ({
+      dts: curto(atributo(b, 'data-test-selector')),
+      alvo: curto(atributo(b, 'data-a-target')),
+      aria: curto(atributo(b, 'aria-label')),
+    }));
+  }
+
+  // Pistas do centro para o diagnóstico de sem-centro: 'tag#id[dts][role]' sem repetição, até 8.
+  const PISTAS_SELETORES = [
+    '[role="dialog"]',
+    '[data-test-selector*="reward" i]',
+    '[data-test-selector*="points" i]',
+    '[id*="reward" i]',
+    '[class*="reward-center"]',
+    '[class*="community-points"]',
+  ];
+
+  function pistaDe(el) {
+    let s = curto(String(el.tagName || '').toLowerCase());
+    const id = curto(el.id);
+    if (id) s += '#' + id;
+    const dts = curto(atributo(el, 'data-test-selector'));
+    if (dts) s += '[' + dts + ']';
+    const role = curto(atributo(el, 'role'));
+    if (role) s += '[' + role + ']';
+    return s;
+  }
+
+  function pistasCentro(doc) {
+    const out = [];
+    for (const sel of PISTAS_SELETORES) {
+      let itens = [];
+      try { itens = Array.from(doc.querySelectorAll(sel)); } catch { itens = []; }
+      for (const el of itens) {
+        const p = pistaDe(el);
+        if (p && !out.includes(p)) out.push(p);
+        if (out.length >= 8) return out;
+      }
+    }
+    return out;
+  }
+
+  // Mesma regra de parsePontos (main/twitch/points.js). O preload não importa o módulo, então a regra fica repetida aqui.
+  const SALDO_RE = /^(\d+(?:[.,]\d+)?|\d{1,3}(?:[., ]\d{3})+)\s*(mil|mi|k|m)?$/i;
+  function saldoLidoDe(texto) {
+    const s = String(texto || '').replace(/[  ]/g, ' ').trim();
+    const m = SALDO_RE.exec(s);
+    if (!m) return false;
+    if (!m[2]) {
+      if (!/^\d+$/.test(m[1]) && !/^\d{1,3}([., ]\d{3})+$/.test(m[1])) return false;
+      return Number.isSafeInteger(Number(m[1].replace(/[., ]/g, '')));
+    }
+    return /^\d+(?:[.,]\d+)?$/.test(m[1]);
+  }
+
   // Lê os fatos da página. "rodando" exige que o tempo do vídeo tenha andado desde a leitura anterior.
   function lerFatos(doc, loc, anterior) {
     const video = primeiro(doc, SELETORES.video);
@@ -105,6 +177,18 @@ var MESA_TWITCH_DOM = (function () {
       saldoTexto = primeiroTexto(doc, SELETORES.saldo) || textoDe(primeiro(doc, SELETORES.botaoPontos));
       saldoTexto = saldoTexto.slice(0, 24);
     }
+    const resumo = primeiro(doc, SELETORES.resumo);
+    // Booleanos, contagens e, no resumo, até 4 atributos curtos por botão. Nenhum texto da página sai daqui.
+    const diag = {
+      resumo: !!resumo,
+      botaoPontos: !!primeiro(doc, SELETORES.botaoPontos),
+      botoesNoResumo: resumo ? resumo.querySelectorAll('button').length : 0,
+      botoesResumo: botoesDoResumo(resumo),
+      saldoSeletor: SELETORES.saldo.findIndex((sel) => casa(doc, sel)),
+      saldoTamanho: saldoTexto.length,
+      saldoLido: saldoLidoDe(saldoTexto),
+      centroSeletor: SELETORES.centro.findIndex((sel) => casa(doc, sel)),
+    };
     return {
       fatos: {
         canal: canalDe(loc),
@@ -115,6 +199,7 @@ var MESA_TWITCH_DOM = (function () {
         rodando,
         bau: !!acharBau(doc),
         saldoTexto,
+        diag,
       },
       anterior: { tempo: video && typeof video.currentTime === 'number' ? video.currentTime : -1 },
     };
@@ -305,15 +390,18 @@ var MESA_TWITCH_DOM = (function () {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
     if (!resumo) return { estado: 'falhou', motivo: 'sem-resumo' };
     const achaCentro = () => centroAberto(doc);
-    if (!achaCentro()) clicar(resumo);
+    let clicou = false;
+    if (!achaCentro()) clicou = clicar(resumo);
+    // Diagnóstico do sem-centro: fase em que faltou o centro, se o clique no resumo foi feito e pistas do DOM.
+    const semCentro = (fase) => ({ estado: 'falhou', motivo: 'sem-centro', fase, clicou, pistas: pistasCentro(doc) });
     const centro = await deps.esperar(achaCentro, 6000);
-    if (!centro) return { estado: 'falhou', motivo: 'sem-centro' };
+    if (!centro) return semCentro('abrir');
     let busca = { achado: null, ambigua: false };
     await deps.esperar(() => {
       busca = buscarRecompensa(doc, pedido.titulo, achaCentro());
       return busca.achado;
     }, 6000);
-    if (!achaCentro()) return { estado: 'falhou', motivo: 'sem-centro' };
+    if (!achaCentro()) return semCentro('buscar');
     const item = busca.achado;
     if (!item) {
       const vistos = titulosVistos(achaCentro());
@@ -324,10 +412,10 @@ var MESA_TWITCH_DOM = (function () {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };
     }
-    clicar(item);
+    if (clicar(item)) clicou = true;
     await deps.pausa(600);
     const aberto = achaCentro();
-    if (!aberto) return { estado: 'falhou', motivo: 'sem-centro' };
+    if (!aberto) return semCentro('confirmar');
     if (primeiro(aberto, SELETORES.campoTexto)) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'pede-texto' };

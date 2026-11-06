@@ -118,11 +118,32 @@ function liveBonusUltimo(ultimo) {
   const hora = liveBonusHora(ultimo.em);
   if (ultimo.estado === 'ok') return `${nome} às ${hora}`;
   if (ultimo.estado === 'falhou') {
-    const base = `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
+    let base = `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
+    if (ultimo.motivo === 'sem-centro') {
+      base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;
+      const pistas = Array.isArray(ultimo.pistas) ? ultimo.pistas.filter((p) => typeof p === 'string' && p) : [];
+      return pistas.length ? `${base}. Vi no DOM: ${pistas.join(', ')}` : base;
+    }
     const vistos = Array.isArray(ultimo.vistos) ? ultimo.vistos.filter((t) => typeof t === 'string' && t) : [];
     return vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;
   }
   return `${nome} sem confirmação do jogo às ${hora}`;
+}
+
+// Diagnóstico da página: só contagens e sim/não, sem texto da Twitch.
+function liveBonusDiag(d) {
+  if (!d || typeof d !== 'object') return '';
+  const sn = (v) => (v ? 'sim' : 'não');
+  const num = (v) => (Number.isFinite(v) ? String(v) : '—');
+  const botoes = Array.isArray(d.botoesResumo) ? d.botoesResumo : [];
+  const itens = botoes.map((b) => {
+    const o = b && typeof b === 'object' ? b : {};
+    return [o.dts, o.alvo, o.aria].map((v) => (typeof v === 'string' && v ? v : '-')).join('|');
+  });
+  const resumo = itens.length ? itens.join('; ') : 'nenhum';
+  return `Diag: resumo=${sn(d.resumo)}, botão=${sn(d.botaoPontos)}, botões=${num(d.botoesNoResumo)}, `
+    + `saldo#=${num(d.saldoSeletor)}, saldo=${num(d.saldoTamanho)} chars, lido=${sn(d.saldoLido)}, centro#=${num(d.centroSeletor)}, `
+    + `resumo: ${resumo}`;
 }
 
 function liveBonusFatos(bay, decorrido) {
@@ -299,11 +320,12 @@ function mountLiveBonus(parent) {
     sair.type = 'button';
     acoes.append(navegador, jaEntrei, entrar, mostrar, sair);
     const dica = el('p', 'live-bonus-hint');
+    const diagP = el('p', 'live-bonus-hint');
 
-    li.append(head, dl, acoes, dica);
+    li.append(head, dl, acoes, dica, diagP);
     lista.append(li);
 
-    const linha = { i, nome, status, sw, dds, navegador, jaEntrei, entrar, mostrar, sair, dica, armado: false, timer: 0 };
+    const linha = { i, nome, status, sw, dds, navegador, jaEntrei, entrar, mostrar, sair, dica, diagP, armado: false, timer: 0 };
     linhas.push(linha);
 
     navegador.addEventListener('click', () => {
@@ -383,6 +405,7 @@ function mountLiveBonus(parent) {
       linha.mostrar.hidden = true;
       linha.sair.hidden = true;
       linha.dica.hidden = true;
+      linha.diagP.hidden = true;
       return;
     }
     const frase = liveBonusFrase(bay);
@@ -399,6 +422,9 @@ function mountLiveBonus(parent) {
     if (linha.dica.textContent !== dica.texto) linha.dica.textContent = dica.texto;
     linha.dica.hidden = !dica.texto;
     linha.dica.classList.toggle('is-parado', dica.parado);
+    const diagTexto = liveBonusDiag(bay.diag);
+    if (linha.diagP.textContent !== diagTexto) linha.diagP.textContent = diagTexto;
+    linha.diagP.hidden = !diagTexto;
     linha.mostrar.hidden = semLogin;
     const texto = bay.janela === 'visivel' ? 'Esconder janela' : 'Mostrar janela';
     if (linha.mostrar.textContent !== texto) linha.mostrar.textContent = texto;
@@ -474,5 +500,5 @@ function paintLiveBonus() {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { liveBonusDica, liveBonusJuntar, liveBonusLoginsNovos, mountLiveBonus };
+  module.exports = { liveBonusDica, liveBonusDiag, liveBonusJuntar, liveBonusLoginsNovos, mountLiveBonus };
 }

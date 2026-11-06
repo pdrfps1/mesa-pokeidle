@@ -161,6 +161,35 @@ function avaliarGanho(estado, { rodando, saldoMinimo, bauEm }, agora) {
   return { estado: e, semGanho };
 }
 
+// Diagnóstico do painel: só estas chaves, só número ou booleano. Texto livre não passa.
+const DIAG_BOOL = ['resumo', 'botaoPontos', 'saldoLido'];
+const DIAG_NUM = ['botoesNoResumo', 'saldoSeletor', 'saldoTamanho', 'centroSeletor'];
+const BOTOES_RESUMO_MAX = 4;
+const FASES_PAGINA = ['abrir', 'buscar', 'confirmar'];
+const PISTAS_MAX = 8;
+
+// Texto curto de diagnóstico: sem controle, dígito vira '#', até 40 caracteres. Não-string vira ''.
+function textoCurto(v) {
+  return (typeof v === 'string' ? v : '').replace(/[\u0000-\u001f\u007f-\u009f]/g, '').replace(/\d/g, '#').trim().slice(0, 40);
+}
+
+function limparBotoesResumo(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, BOTOES_RESUMO_MAX).map((b) => {
+    const o = b && typeof b === 'object' ? b : {};
+    return { dts: textoCurto(o.dts), alvo: textoCurto(o.alvo), aria: textoCurto(o.aria) };
+  });
+}
+
+function limparDiag(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const out = {};
+  for (const k of DIAG_BOOL) out[k] = raw[k] === true;
+  for (const k of DIAG_NUM) out[k] = typeof raw[k] === 'number' && Number.isFinite(raw[k]) ? raw[k] : -1;
+  out.botoesResumo = limparBotoesResumo(raw.botoesResumo);
+  return out;
+}
+
 function limparFatos(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const flag = (v) => v === true;
@@ -179,6 +208,7 @@ function limparFatos(raw) {
     rodando: flag(raw.rodando),
     bau: flag(raw.bau),
     saldoTexto,
+    diag: limparDiag(raw.diag),
   };
 }
 
@@ -192,6 +222,19 @@ function limparVistos(raw) {
     .slice(0, VISTOS_MAX);
 }
 
+// Pistas do DOM no sem-centro: mesma regra de limparVistos, com dígito virando '#'.
+function limparPistas(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const p of raw) {
+    if (typeof p !== 'string') continue;
+    const t = textoCurto(p).slice(0, 40);
+    if (t && !out.includes(t)) out.push(t);
+    if (out.length >= PISTAS_MAX) break;
+  }
+  return out;
+}
+
 function limparResultado(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = raw.id;
@@ -199,7 +242,16 @@ function limparResultado(raw) {
   if (raw.estado === 'clicado') return { id, estado: 'clicado', motivo: '' };
   if (raw.estado !== 'falhou') return null;
   const motivo = MOTIVOS_PAGINA.includes(raw.motivo) ? raw.motivo : 'outro';
-  return { id, estado: 'falhou', motivo, vistos: limparVistos(raw.vistos) };
+  const fase = FASES_PAGINA.includes(raw.fase) ? raw.fase : '';
+  return {
+    id,
+    estado: 'falhou',
+    motivo,
+    vistos: limparVistos(raw.vistos),
+    fase,
+    clicou: raw.clicou === true,
+    pistas: limparPistas(raw.pistas),
+  };
 }
 
 module.exports = {

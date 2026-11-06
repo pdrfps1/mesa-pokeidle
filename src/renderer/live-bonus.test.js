@@ -227,6 +227,64 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     assert.ok(ambigua, 'rótulo da recompensa ambígua');
     assert.equal(ambigua.textContent.includes('Vi:'), false);
   });
+
+  it('sem-centro mostra fase, clicou e as pistas em "Vi no DOM", só em textContent', async () => {
+    const em = Date.now() - 1000;
+    const ultimo = {
+      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
+      fase: 'buscar', clicou: true, pistas: ['div#reward-a[dialog]', '<b>x</b>'],
+    };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
+    assert.ok(dd, 'linha do sem-centro');
+    assert.match(dd.textContent, /fase=buscar, clicou=sim\. Vi no DOM: div#reward-a\[dialog\], <b>x<\/b>$/);
+    assert.equal(dd.children.length, 0);
+  });
+
+  it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
+    const em = Date.now() - 1000;
+    montar(snap(quatro({ 0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [] } } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
+    assert.ok(dd, 'linha do sem-centro');
+    assert.match(dd.textContent, /fase=-, clicou=não$/);
+    assert.equal(dd.textContent.includes('Vi no DOM'), false);
+  });
+});
+
+describe('diag no painel da baía', () => {
+  beforeEach(prepararGlobais);
+
+  it('liveBonusDiag monta a linha só com contagens e sim/não', () => {
+    assert.equal(
+      LB.liveBonusDiag({ resumo: true, botaoPontos: true, botoesNoResumo: 3, saldoSeletor: 0, saldoTamanho: 12, saldoLido: false, centroSeletor: -1 }),
+      'Diag: resumo=sim, botão=sim, botões=3, saldo#=0, saldo=12 chars, lido=não, centro#=-1, resumo: nenhum',
+    );
+    assert.equal(LB.liveBonusDiag(null), '');
+  });
+
+  it('liveBonusDiag lista os botões do resumo como dts|alvo|aria, vazio vira -', () => {
+    const d = {
+      resumo: true, botaoPontos: true, botoesNoResumo: 2, saldoSeletor: 0, saldoTamanho: 3, saldoLido: true, centroSeletor: -1,
+      botoesResumo: [{ dts: 'pts-#', alvo: '', aria: 'Abrir ##' }, { dts: '', alvo: '', aria: '' }],
+    };
+    assert.equal(
+      LB.liveBonusDiag(d),
+      'Diag: resumo=sim, botão=sim, botões=2, saldo#=0, saldo=3 chars, lido=sim, centro#=-1, resumo: pts-#|-|Abrir ##; -|-|-',
+    );
+  });
+
+  it('o diag aparece no painel da baía com os valores, só em textContent', async () => {
+    const diag = { resumo: true, botaoPontos: true, botoesNoResumo: 3, saldoSeletor: 0, saldoTamanho: 12, saldoLido: false, centroSeletor: -1 };
+    montar(snap(quatro({ 0: { diag } })));
+    await esperar();
+    const linha = criados.find((n) => n.tag === 'p' && n.textContent.startsWith('Diag:'));
+    assert.ok(linha, 'linha de diagnóstico da baía 1');
+    assert.equal(linha.textContent, 'Diag: resumo=sim, botão=sim, botões=3, saldo#=0, saldo=12 chars, lido=não, centro#=-1, resumo: nenhum');
+    assert.equal(linha.children.length, 0);
+    assert.equal(criados.filter((n) => n.tag === 'p' && n.textContent.startsWith('Diag:')).length, 1);
+  });
 });
 
 describe('mountLiveBonus', () => {

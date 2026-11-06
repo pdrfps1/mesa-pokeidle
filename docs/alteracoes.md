@@ -1,5 +1,69 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · diagnóstico do resgate da Twitch
+
+> O resgate agora diz em que fase parou (abrir, buscar ou confirmar), se a Mesa clicou no resumo ou no item, e mostra os elementos da página que podem ser o centro. O clique não mudou: é diagnóstico para a próxima tentativa real.
+
+### Destaques do patch
+- **Fase do sem-centro:** `abrir`, `buscar` ou `confirmar`, com `clicou` (sim ou não).
+- **Pistas no DOM:** até 8 elementos que podem ser o centro, só leitura, nunca clicados.
+- **Botões do resumo no diag:** até 4 botões, sanitizados.
+
+### Bônus Twitch
+*O diagnóstico mostra onde o resgate parou, sem mudar o clique.*
+
+**Por quê.** A falha `sem-centro` dizia só que a lista não abriu. Sem a fase, o clique feito e os elementos vistos, não dava para separar seletor errado de centro que demora.
+
+- `sem-centro` ⇒ resultado traz `fase`, `clicou` e `pistas`
+- `clicou` ⇒ true se houve clique no resumo ou no item da recompensa
+- `pistas` ⇒ até 8 elementos `tag#id[data-test-selector][role]`, sem repetição, só leitura
+- diag ⇒ `botoesResumo` com até 4 botões (`data-test-selector`, `data-a-target`, `aria-label`); dígito vira `#`, corte de 40, sem `textContent`
+- `saldo#` ⇒ índice do seletor de saldo que casou; `0` é o primário (`copo-balance-string`)
+- `centro#` ⇒ índice do seletor de centro, da leitura periódica de 3 s, não do momento do clique
+
+**NOVO**
+- resultado `sem-centro`: campos `fase`, `clicou` e `pistas`
+- diag: `botoesResumo`, `saldo#` e `centro#`
+- painel: «Vi no DOM: …» na falha `sem-centro`
+
+**AJUSTE**
+- painel: a falha `sem-centro` mostra `fase`, `clicou` e as pistas, no lugar de «Vi: …»
+- `points.js`: `fase` só aceita `abrir`, `buscar` ou `confirmar`; pistas limitadas a 8
+
+**CORREÇÃO**
+- falha na fase `confirmar` agora registra `clicou` certo: sim quando o item da recompensa foi clicado antes da falha
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `botoesDoResumo`, `pistasCentro`, `fase` e `clicou` no `sem-centro`, `saldo#` e `centro#` no diag
+- `dashboard/src/preload/twitch-page.js`: repasse de `fase`, `clicou` e `pistas` no resultado
+- `dashboard/src/main/twitch/points.js`: `limparBotoesResumo`, `limparPistas` e `FASES_PAGINA`
+- `dashboard/src/main/twitch/controller.js`: repasse de `fase`, `clicou` e `pistas` ao painel
+- `dashboard/src/renderer/live-bonus.js`: linha do `sem-centro` com `fase`, `clicou` e «Vi no DOM: …»; `botoesResumo`, `saldo#` e `centro#` no «Diag:»
+
+### Testes
+- `npm test` em `dashboard/`: **364** passaram, 0 falharam, em execução de 2026-11-06. A contagem é da suíte inteira, que inclui testes de arquivos ainda não commitados de outras sessões (`process-table`, `ui/theme-sync`).
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · diagnóstico do resgate da Twitch**
+
+Resumo: o resgate da Twitch mostra em que fase parou e o que a Mesa viu na página. O clique não mudou.
+
+**Twitch / Pontos**
+- [Novo] A falha `sem-centro` informa a fase (abrir, buscar ou confirmar) e se houve clique.
+- [Correção] Na fase confirmar, `clicou` passa a indicar o clique no item da recompensa.
+
+**Painel**
+- [Novo] «Vi no DOM: …» com até 8 elementos que podem ser o centro, só leitura.
+- [Ajuste] A falha `sem-centro` mostra fase e clicou, no lugar de «Vi: …».
+
+**Diagnóstico**
+- [Novo] Até 4 botões do resumo no `Diag`, com `data-test-selector`, `data-a-target` e `aria-label`, sanitizados.
+- [Novo] `saldo#` (índice do seletor de saldo; 0 é o primário) e `centro#` (leitura de 3 s).
+
+**Problemas conhecidos**
+- A causa do `sem-centro` na Baía 2 ainda não está comprovada. Próximo passo: repetir o resgate e colar a linha `Diag` e a linha de falha.
+
 ## 2026-11-06 — Patch «Vigília» · resgate da Twitch com centro aberto
 
 > O resgate de XP parava em «não achei a recompensa» porque a Mesa confundia qualquer diálogo aberto na página com o centro de recompensas. Agora o centro só é reconhecido quando é o centro de verdade, e a falha diz em que ponto parou.
