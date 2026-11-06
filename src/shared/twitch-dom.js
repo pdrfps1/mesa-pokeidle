@@ -102,7 +102,9 @@ var MESA_TWITCH_DOM = (function () {
   }
 
   function atributo(el, nome) {
-    return el && typeof el.getAttribute === 'function' ? el.getAttribute(nome) : null;
+    try {
+      return el && typeof el.getAttribute === 'function' ? el.getAttribute(nome) : null;
+    } catch { return null; }
   }
 
   // Botões do resumo, com os três atributos curtos de cada um. Nunca lê textContent.
@@ -148,6 +150,43 @@ var MESA_TWITCH_DOM = (function () {
       }
     }
     return out;
+  }
+
+  // Diagnóstico do sem-centro: até 2 [role="dialog"], com botões, abas, itens, dts e booleanos. Nunca textContent.
+  function dialogosDiag(doc, titulo) {
+    let lista = [];
+    try { lista = Array.from(doc.querySelectorAll('[role="dialog"]')).slice(0, 2); } catch { lista = []; }
+    const alvo = normal(titulo);
+    return lista.map((dialogo) => {
+      const out = { botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false };
+      let botoes = [];
+      let abas = [];
+      try { botoes = Array.from(dialogo.querySelectorAll('button,[role="button"]')); } catch { botoes = []; }
+      try { abas = Array.from(dialogo.querySelectorAll('[role="tab"]')); } catch { abas = []; }
+      out.botoes = botoes.length;
+      out.abas = abas.length;
+      out.itens = [
+        ...botoes.map((b) => ({ el: b, tab: false })),
+        ...abas.map((a) => ({ el: a, tab: true })),
+      ].map(({ el, tab }) => ({
+        dts: curto(atributo(el, 'data-test-selector')),
+        alvo: curto(atributo(el, 'data-a-target')),
+        aria: curto(atributo(el, 'aria-label')),
+        tab,
+      })).filter((it) => it.tab || it.dts || it.alvo || it.aria).slice(0, 6);
+      try {
+        const dts = [];
+        for (const d of Array.from(dialogo.querySelectorAll('*'))) {
+          const v = curto(atributo(d, 'data-test-selector'));
+          if (v && !dts.includes(v)) dts.push(v);
+          if (dts.length >= 8) break;
+        }
+        out.dts = dts;
+      } catch { out.dts = []; }
+      try { out.titulo = !!alvo && normal(textoDe(dialogo)).includes(alvo); } catch { out.titulo = false; }
+      try { out.campoTexto = !!primeiro(dialogo, SELETORES.campoTexto); } catch { out.campoTexto = false; }
+      return out;
+    });
   }
 
   // Mesma regra de parsePontos (main/twitch/points.js). O preload não importa o módulo, então a regra fica repetida aqui.
@@ -390,10 +429,21 @@ var MESA_TWITCH_DOM = (function () {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
     if (!resumo) return { estado: 'falhou', motivo: 'sem-resumo' };
     const achaCentro = () => centroAberto(doc);
+    // Diagnóstico: havia diálogo antes do clique no resumo?
+    let dialogoAntes = false;
+    try { dialogoAntes = !!doc.querySelector('[role="dialog"]'); } catch { dialogoAntes = false; }
     let clicou = false;
     if (!achaCentro()) clicou = clicar(resumo);
-    // Diagnóstico do sem-centro: fase em que faltou o centro, se o clique no resumo foi feito e pistas do DOM.
-    const semCentro = (fase) => ({ estado: 'falhou', motivo: 'sem-centro', fase, clicou, pistas: pistasCentro(doc) });
+    // Diagnóstico do sem-centro: fase em que faltou o centro, se o clique no resumo foi feito, pistas e diálogos do DOM.
+    const semCentro = (fase) => ({
+      estado: 'falhou',
+      motivo: 'sem-centro',
+      fase,
+      clicou,
+      pistas: pistasCentro(doc),
+      dialogoAntes,
+      dialogos: dialogosDiag(doc, pedido.titulo),
+    });
     const centro = await deps.esperar(achaCentro, 6000);
     if (!centro) return semCentro('abrir');
     let busca = { achado: null, ambigua: false };
@@ -452,6 +502,7 @@ var MESA_TWITCH_DOM = (function () {
     esperar,
     pausa,
     resgatar,
+    dialogosDiag,
   };
 })();
 

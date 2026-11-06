@@ -1,5 +1,77 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · diálogos no diagnóstico do resgate da Twitch
+
+> Quando o resgate falha como `sem-centro`, a Mesa lista o que existe dentro de cada diálogo da página. A leitura só observa: o clique não mudou, e o diagnóstico serve para decidir o próximo passo.
+
+### Destaques do patch
+- **Diálogos no sem-centro:** até 2 `[role="dialog"]`, com botões, abas, título pedido e rótulos de até 6 itens.
+- **Só leitura:** nenhum clique novo; o clique continua só no botão do resumo.
+- **Leitura protegida:** um atributo que falha não derruba o diagnóstico.
+
+### Bônus Twitch
+*O diagnóstico mostra o que há dentro do diálogo que abriu, sem clicar nele.*
+
+**Por quê.** A Baía 2 mostrou `fase=abrir`, `clicou=sim` e as pistas `div[dialog]` e `div[community-points-summary]`. Depois do clique, nenhum atributo com «reward» apareceu. Ainda não se sabe se o diálogo é um popover que pede outro clique ou outro painel.
+
+- `sem-centro` ⇒ cada `[role="dialog"]` da página (até 2) vira um resumo com `antes`, `título`, `botões`, `abas`, `itens` e `dts`
+- `itens` ⇒ até 6 itens rotulados (`dts`, `alvo`, `aria`, `tab`), com botões e abas
+- botão sem nenhum rótulo ⇒ conta em `botões`, mas não entra em `itens`
+- `dts` ⇒ até 8 valores de `data-test-selector` dentro do diálogo
+- `título` ⇒ só sim ou não: se o título pedido aparece no texto do diálogo; o texto não é guardado
+- `antes` ⇒ sim se já havia algum `[role="dialog"]` na página antes do clique no resumo; é um valor só da página, repetido em cada diálogo
+- leituras de atributo protegidas por try/catch: falha em um atributo não derruba o diagnóstico
+
+**NOVO**
+- resultado `sem-centro`: campos `dialogos` (até 2) e `dialogoAntes`
+- painel: na linha de falha `sem-centro`, o trecho «Diálogo#1: antes=…, título=…, botões=…, abas=…, itens: …, dts: …»
+
+**NÃO MUDOU**
+- seletores do centro, espera de 6 s, `centroAberto` e `botaoPontos`
+- o clique: continua só no botão do resumo
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `dialogosDiag` e `dialogoAntes` no `sem-centro`
+- `dashboard/src/preload/twitch-page.js`: repasse de `dialogoAntes` e `dialogos` no resultado
+- `dashboard/src/main/twitch/points.js`: `limparDialogos` (até 2 diálogos, 6 itens e 8 `dts`) e `dialogoAntes` só com `true` estrito
+- `dashboard/src/main/twitch/controller.js`: repasse de `dialogoAntes` e `dialogos` ao último resgate
+- `dashboard/src/renderer/live-bonus.js`: `liveBonusDialogos`, trecho «Diálogo#N» na linha de falha
+
+### Testes
+- `npm test` em `dashboard/`: **378** passaram, 0 falharam, em execução de 2026-11-06. A contagem é da suíte inteira, que inclui testes de arquivos ainda não commitados de outras sessões (`process-table`, `ui/theme-sync`).
+- Cobertura: `twitch-dom.test.js` (`dialogosDiag`, `dialogoAntes`, atributo que lança), `points.test.js` (limites), `controller.test.js` (repasse) e `live-bonus.test.js` (trecho «Diálogo#1»).
+- O código desta entrega ainda não está commitado: a diferença está no working tree contra `be7a9de`.
+
+### Não confirmado
+- **Seletores do centro:** continuam sem conferência numa conta real.
+- **Natureza do diálogo:** não se sabe se o `[role="dialog"]` visto é o popover de pontos ou outra lista. Por isso `antes` e os itens são só pistas.
+- **Opção B** (segundo clique dentro do diálogo): depende da linha `Diag` e da nova linha de falha da Baía 2. Não está decidida.
+- **`campoTexto`:** o dado existe no diagnóstico, mas não aparece no trecho do painel.
+
+### Problemas conhecidos
+- O próximo passo é o usuário repetir o resgate na Baía 2 e colar a linha `Diag` e a linha de falha com o trecho «Diálogo#1: …».
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · diálogos no diagnóstico do resgate da Twitch**
+
+Resumo: quando o centro de recompensas não aparece, o diagnóstico lista os diálogos abertos na página. O clique não mudou.
+
+**Twitch / Pontos**
+- [Novo] A falha `sem-centro` informa até 2 diálogos da página, com título, botões e abas.
+- [Ajuste] A leitura só observa: o clique continua só no botão do resumo.
+
+**Painel**
+- [Novo] Na falha `sem-centro`, o trecho «Diálogo#1: …» mostra antes, título, botões, abas, itens e dts.
+
+**Diagnóstico**
+- [Novo] Até 6 itens rotulados por diálogo (`dts`, `alvo`, `aria`, `tab`) e até 8 `data-test-selector`.
+- [Ajuste] Botão sem rótulo conta em botões, mas não entra em itens; leitura de atributo protegida.
+
+**Problemas conhecidos**
+- Não se sabe se o diálogo é o popover de pontos ou outra lista. Próximo passo: repetir o resgate na Baía 2 e colar a linha `Diag` e a linha de falha com o trecho «Diálogo#1: …».
+
+
 ## 2026-11-06 — Patch «Vigília» · diagnóstico do resgate da Twitch
 
 > O resgate agora diz em que fase parou (abrir, buscar ou confirmar), se a Mesa clicou no resumo ou no item, e mostra os elementos da página que podem ser o centro. O clique não mudou: é diagnóstico para a próxima tentativa real.
@@ -41,7 +113,7 @@
 - `dashboard/src/renderer/live-bonus.js`: linha do `sem-centro` com `fase`, `clicou` e «Vi no DOM: …»; `botoesResumo`, `saldo#` e `centro#` no «Diag:»
 
 ### Testes
-- `npm test` em `dashboard/`: **364** passaram, 0 falharam, em execução de 2026-11-06. A contagem é da suíte inteira, que inclui testes de arquivos ainda não commitados de outras sessões (`process-table`, `ui/theme-sync`).
+- `npm test` em `dashboard/`: **364** passaram na época desta entrada (contagem histórica; a atual está na entrada de cima).
 
 ### Patch note
 

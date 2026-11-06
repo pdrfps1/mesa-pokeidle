@@ -112,6 +112,22 @@ function liveBonusAtivos(bay, decorrido) {
   return partes.length ? partes.join(' · ') : 'nenhum ativo';
 }
 
+// Diálogos do sem-centro: um trecho por diálogo. Strings só entram como texto, nunca como HTML.
+function liveBonusDialogos(dialogos, antes) {
+  const lista = Array.isArray(dialogos) ? dialogos.filter((d) => d && typeof d === 'object') : [];
+  if (!lista.length) return '';
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const texto = (v) => (typeof v === 'string' ? v : '');
+  const numero = (v) => (Number.isFinite(v) ? v : 0);
+  return lista.map((d, i) => {
+    const itens = (Array.isArray(d.itens) ? d.itens.filter((it) => it && typeof it === 'object') : [])
+      .map((it) => `${texto(it.dts)}|${texto(it.alvo)}|${texto(it.aria)}|${sim(it.tab)}`);
+    const dts = (Array.isArray(d.dts) ? d.dts : []).filter((t) => typeof t === 'string' && t);
+    return `Diálogo#${i + 1}: antes=${sim(antes)}, título=${sim(d.titulo)}, botões=${numero(d.botoes)}, abas=${numero(d.abas)}`
+      + `, itens: ${itens.length ? itens.join('; ') : 'nenhum'}, dts: ${dts.length ? dts.join(', ') : 'nenhum'}`;
+  }).join(' / ');
+}
+
 function liveBonusUltimo(ultimo) {
   if (!ultimo) return '—';
   const nome = LIVE_BONUS_ROTULO[ultimo.tipo] || 'Bônus';
@@ -122,7 +138,9 @@ function liveBonusUltimo(ultimo) {
     if (ultimo.motivo === 'sem-centro') {
       base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;
       const pistas = Array.isArray(ultimo.pistas) ? ultimo.pistas.filter((p) => typeof p === 'string' && p) : [];
-      return pistas.length ? `${base}. Vi no DOM: ${pistas.join(', ')}` : base;
+      if (pistas.length) base += `. Vi no DOM: ${pistas.join(', ')}`;
+      const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
+      return dialogos ? `${base}. ${dialogos}` : base;
     }
     const vistos = Array.isArray(ultimo.vistos) ? ultimo.vistos.filter((t) => typeof t === 'string' && t) : [];
     return vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;

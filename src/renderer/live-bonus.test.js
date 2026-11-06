@@ -242,6 +242,28 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     assert.equal(dd.children.length, 0);
   });
 
+  it('sem-centro mostra o trecho de diálogos depois de "Vi no DOM", só em textContent', async () => {
+    const em = Date.now() - 1000;
+    const ultimo = {
+      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
+      fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: true,
+      dialogos: [{
+        botoes: 2,
+        abas: 1,
+        titulo: false,
+        campoTexto: false,
+        itens: [{ dts: 'close-btn', alvo: 'tab-#', aria: 'Fechar #', tab: true }],
+        dts: ['close-btn', '<b>x</b>'],
+      }],
+    };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
+    assert.ok(dd, 'linha do sem-centro');
+    assert.match(dd.textContent, /fase=abrir, clicou=sim\. Vi no DOM: div\[dialog\]\. Diálogo#1: antes=sim, título=não, botões=2, abas=1, itens: close-btn\|tab-#\|Fechar #\|sim, dts: close-btn, <b>x<\/b>$/);
+    assert.equal(dd.children.length, 0);
+  });
+
   it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
     const em = Date.now() - 1000;
     montar(snap(quatro({ 0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [] } } })));

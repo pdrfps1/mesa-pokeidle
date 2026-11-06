@@ -361,7 +361,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.mapa[S.centro[0]] = centro; };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [],
     });
     assert.equal(item.clicks, 1);
   });
@@ -383,7 +383,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
       pausa: () => Promise.resolve(),
     };
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [], dialogoAntes: false, dialogos: [],
     });
     assert.equal(resumo.clicks, 0);
   });
@@ -398,7 +398,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     const resumo = el({ tag: 'button', textContent: '1.234' });
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [],
     });
     assert.equal(item.clicks, 1);
     assert.equal(resumo.clicks, 0);
@@ -411,7 +411,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }],
     });
     assert.equal(resumo.clicks, 1);
     assert.equal(alheio.clicks, 0);
@@ -437,6 +437,129 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     assert.equal(new Set(res.pistas).size, 8);
     assert.equal(res.pistas.filter((p) => p === 'section#reward-x[reward-center-#]').length, 1);
     assert.equal(res.pistas[0], 'div#reward-a[dialog]');
+  });
+});
+
+describe('dialogosDiag e dialogoAntes (diagnóstico do sem-centro)', () => {
+  const esperarJa = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
+
+  // Diálogo com um botão (dts e aria), uma aba e, se pedido, um campo de texto.
+  function dialogoComAba(texto, comCampo = false) {
+    const botao = el({ tag: 'button', textContent: 'Fechar', attrs: { 'data-test-selector': 'close-btn', 'aria-label': 'Fechar 12' } });
+    const aba = el({ tag: 'div', textContent: 'Aba', attrs: { role: 'tab', 'data-a-target': 'tab-2' } });
+    const filhos = [botao, aba];
+    const dlg = el({ tag: 'div', textContent: texto, attrs: { role: 'dialog' } });
+    dlg.listas['button,[role="button"]'] = [botao];
+    dlg.listas['[role="tab"]'] = [aba];
+    if (comCampo) {
+      const campo = el({ tag: 'textarea' });
+      dlg.listas.textarea = [campo];
+      filhos.push(campo);
+    }
+    dlg.children = filhos;
+    return dlg;
+  }
+
+  it('diálogo com aba e botão: contagens, itens com tab, dts, título', () => {
+    const d = doc({}, [dialogoComAba('Bônus XP 300')]);
+    assert.deepEqual(D.dialogosDiag(d, 'Bônus XP'), [{
+      botoes: 1,
+      abas: 1,
+      itens: [
+        { dts: 'close-btn', alvo: '', aria: 'Fechar ##', tab: false },
+        { dts: '', alvo: 'tab-#', aria: '', tab: true },
+      ],
+      dts: ['close-btn'],
+      titulo: true,
+      campoTexto: false,
+    }]);
+  });
+
+  it('título ausente e campo de texto presente', () => {
+    const d = doc({}, [dialogoComAba('Outra coisa', true)]);
+    const [r] = D.dialogosDiag(d, 'Bônus XP');
+    assert.equal(r.titulo, false);
+    assert.equal(r.campoTexto, true);
+  });
+
+  it('título pedido vazio ou undefined: titulo false', () => {
+    const d = doc({}, [dialogoComAba('Bônus XP 300')]);
+    assert.equal(D.dialogosDiag(d, '')[0].titulo, false);
+    assert.equal(D.dialogosDiag(d, undefined)[0].titulo, false);
+  });
+
+  it('getAttribute que lança: dialogosDiag não quebra e devolve valores vazios', () => {
+    const botao = el({ tag: 'button', textContent: 'Fechar' });
+    botao.getAttribute = () => { throw new Error('boom'); };
+    const dlg = el({ tag: 'div', textContent: 'Bônus XP 300', attrs: { role: 'dialog' } });
+    dlg.listas['button,[role="button"]'] = [botao];
+    dlg.children = [botao];
+    const [r] = D.dialogosDiag(doc({}, [dlg]), 'Bônus XP');
+    assert.equal(r.botoes, 1);
+    assert.deepEqual(r.itens, []);
+    assert.deepEqual(r.dts, []);
+    assert.equal(r.titulo, true);
+  });
+
+  it('nenhum diálogo: lista vazia', () => {
+    assert.deepEqual(D.dialogosDiag(doc({}), 'Bônus XP'), []);
+  });
+
+  it('seis botões sem rótulo antes de um rotulado: o rotulado aparece em itens e botoes conta os sete', () => {
+    const semRotulo = Array.from({ length: 6 }, () => el({ tag: 'button' }));
+    const rotulado = el({ tag: 'button', attrs: { 'aria-label': 'Fechar 12' } });
+    const dlg = el({ tag: 'div', textContent: 'Bônus XP', attrs: { role: 'dialog' } });
+    dlg.listas['button,[role="button"]'] = [...semRotulo, rotulado];
+    dlg.children = [...semRotulo, rotulado];
+    const [r] = D.dialogosDiag(doc({}, [dlg]), 'Bônus XP');
+    assert.equal(r.botoes, 7);
+    assert.deepEqual(r.itens, [{ dts: '', alvo: '', aria: 'Fechar ##', tab: false }]);
+  });
+
+  it('limites: 2 diálogos, 6 itens e 8 dts; botões seguem contados', () => {
+    const muitos = Array.from({ length: 8 }, (_, i) => el({ tag: 'button', attrs: { 'data-test-selector': `b${'abcdefgh'[i]}` } }));
+    const dlg = el({ attrs: { role: 'dialog' }, textContent: 'Bônus XP' });
+    dlg.listas['button,[role="button"]'] = muitos;
+    dlg.children = muitos;
+    const d = doc({}, [dlg, dialogoComAba('x'), dialogoComAba('y')]);
+    const res = D.dialogosDiag(d, 'Bônus XP');
+    assert.equal(res.length, 2);
+    assert.equal(res[0].botoes, 8);
+    assert.equal(res[0].itens.length, 6);
+    assert.equal(res[0].dts.length, 8);
+  });
+
+  it('dialogoAntes: true quando o diálogo já existia antes do clique; o botão do diálogo não é clicado', async () => {
+    const d = doc({}, [dialogoComAba('Algo')]);
+    d.mapa['[role="dialog"]'] = d.dialogos[0];
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.motivo, 'sem-centro');
+    assert.equal(res.dialogoAntes, true);
+    assert.equal(res.dialogos.length, 1);
+    assert.equal(resumo.clicks, 1);
+    assert.equal(d.dialogos[0].children[0].clicks, 0);
+  });
+
+  it('diálogo aberto pelo clique: dialogoAntes false, mas o diálogo entra em dialogos', async () => {
+    const d = doc();
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => { d.dialogos.push(dialogoComAba('Bônus XP')); };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.dialogoAntes, false);
+    assert.equal(res.dialogos.length, 1);
+    assert.equal(res.dialogos[0].titulo, true);
+    assert.equal(resumo.clicks, 1);
+  });
+
+  it('nenhum diálogo: dialogoAntes false e dialogos vazio', async () => {
+    const d = doc();
+    d.mapa[S.botaoPontos[0]] = el({ tag: 'button', textContent: '1.234' });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.dialogoAntes, false);
+    assert.deepEqual(res.dialogos, []);
   });
 });
 
@@ -788,7 +911,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     // Pré-checagem clica o resumo (nenhum centro aberto); o painel genérico não entra na conta.
@@ -810,7 +933,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
@@ -848,7 +971,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -862,7 +985,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -895,7 +1018,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
       pausa: () => Promise.resolve(),
     };
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [] });
+    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [] });
     assert.equal(item.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -906,7 +1029,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [], dialogoAntes: false, dialogos: [] });
     assert.deepEqual(ordem, ['resumo']);
   });
 
@@ -922,7 +1045,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { if (!d.dialogos.includes(generico)) d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
   });

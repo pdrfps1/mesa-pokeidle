@@ -235,6 +235,40 @@ function limparPistas(raw) {
   return out;
 }
 
+// Diálogos do sem-centro: até 2 diálogos, 6 itens e 8 dts. Strings passam por textoCurto; números finitos com limite.
+const DIALOGOS_MAX = 2;
+const ITENS_DIALOGO_MAX = 6;
+const DTS_DIALOGO_MAX = 8;
+const CONTAGEM_MAX = 999;
+
+function contagemLimpa(v) {
+  return typeof v === 'number' && Number.isFinite(v) ? Math.min(Math.max(0, Math.floor(v)), CONTAGEM_MAX) : 0;
+}
+
+function limparDialogos(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, DIALOGOS_MAX).map((d) => {
+    const o = d && typeof d === 'object' ? d : {};
+    const itens = Array.isArray(o.itens)
+      ? o.itens.slice(0, ITENS_DIALOGO_MAX).map((it) => {
+        const i = it && typeof it === 'object' ? it : {};
+        return { dts: textoCurto(i.dts), alvo: textoCurto(i.alvo), aria: textoCurto(i.aria), tab: i.tab === true };
+      })
+      : [];
+    const dts = Array.isArray(o.dts)
+      ? [...new Set(o.dts.slice(0, 64).map(textoCurto).filter(Boolean))].slice(0, DTS_DIALOGO_MAX)
+      : [];
+    return {
+      botoes: contagemLimpa(o.botoes),
+      abas: contagemLimpa(o.abas),
+      itens,
+      dts,
+      titulo: o.titulo === true,
+      campoTexto: o.campoTexto === true,
+    };
+  });
+}
+
 function limparResultado(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = raw.id;
@@ -251,6 +285,8 @@ function limparResultado(raw) {
     fase,
     clicou: raw.clicou === true,
     pistas: limparPistas(raw.pistas),
+    dialogoAntes: raw.dialogoAntes === true,
+    dialogos: limparDialogos(raw.dialogos),
   };
 }
 

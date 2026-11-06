@@ -308,8 +308,8 @@ describe('limparFatos e limparResultado', () => {
   });
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', vistos: [], fase: '', clicou: false, pistas: [] });
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', vistos: [], fase: '', clicou: false, pistas: [] });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', vistos: [], fase: '', clicou: false, pistas: [], dialogoAntes: false, dialogos: [] });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', vistos: [], fase: '', clicou: false, pistas: [], dialogoAntes: false, dialogos: [] });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
     assert.equal(P.limparResultado({ id: '5', estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 0, estado: 'clicado' }), null);
@@ -362,6 +362,40 @@ describe('limparFatos e limparResultado', () => {
     assert.equal(pistas[1], 'x'.repeat(40));
     assert.equal(pistas.length, 8);
     assert.equal(pistas.some((p) => /\d/.test(p)), false);
+  });
+
+  it('dialogoAntes só vale com true estrito', () => {
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', dialogoAntes: true }).dialogoAntes, true);
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', dialogoAntes: 'sim' }).dialogoAntes, false);
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro' }).dialogoAntes, false);
+  });
+
+  it('dialogos: 2 diálogos, 6 itens, 8 dts; dígito vira #, controle sai, corte em 40; contagens e booleanos limpos', () => {
+    const itens = Array.from({ length: 9 }, (_, i) => ({
+      dts: `dts-${i}\u0001`,
+      alvo: 'a'.repeat(60),
+      aria: 'Abrir 12',
+      tab: i % 2 === 0,
+    }));
+    const dts = Array.from({ length: 12 }, (_, i) => `d${'abcdefghijkl'[i]}\u0007`);
+    const raw = [
+      { botoes: 3.7, abas: -2, itens, dts, titulo: 'sim', campoTexto: true },
+      { botoes: Infinity, abas: NaN, itens: 'nao', dts: 'nao', titulo: true, campoTexto: 1 },
+      { botoes: 1 },
+    ];
+    const r = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', dialogos: raw }).dialogos;
+    assert.equal(r.length, 2);
+    assert.equal(r[0].botoes, 3);
+    assert.equal(r[0].abas, 0);
+    assert.equal(r[0].itens.length, 6);
+    assert.deepEqual(r[0].itens[0], { dts: 'dts-#', alvo: 'a'.repeat(40), aria: 'Abrir ##', tab: true });
+    assert.equal(r[0].itens[1].tab, false);
+    assert.equal(r[0].dts.length, 8);
+    assert.equal(r[0].dts[0], 'da');
+    assert.equal(r[0].titulo, false);
+    assert.equal(r[0].campoTexto, true);
+    assert.deepEqual(r[1], { botoes: 0, abas: 0, itens: [], dts: [], titulo: true, campoTexto: false });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', dialogos: 'nao' }).dialogos, []);
   });
 
   it('vistos: array de texto, controle removido, até 8 itens de 45 caracteres', () => {

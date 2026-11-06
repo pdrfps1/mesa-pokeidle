@@ -362,6 +362,17 @@ describe('controller: resgate', () => {
     assert.equal(snap.ultimo.motivo, 'indisponivel');
   });
 
+  it('dialogoAntes e dialogos do resultado de falha vão para o último resgate', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    const dialogos = [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }];
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-centro', dialogoAntes: true, dialogos });
+    const u = ctx.c.snapshot().bays[0].ultimo;
+    assert.equal(u.dialogoAntes, true);
+    assert.deepEqual(u.dialogos, dialogos);
+  });
+
   it('vistos do resultado de falha vão para o último resgate', () => {
     const ctx = montar();
     abrir(ctx);
