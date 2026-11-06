@@ -340,7 +340,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, vistos, fase, clicou, pistas, dialogoAntes, dialogos }) {
+  function resultado(i, { id, estado, motivo, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, cabecalho, classes }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -358,8 +358,11 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         fase: fase || '',
         clicou: clicou === true,
         pistas: Array.isArray(pistas) ? pistas : [],
+        pistasAntes: Array.isArray(pistasAntes) ? pistasAntes : null,
         dialogoAntes: dialogoAntes === true,
         dialogos: Array.isArray(dialogos) ? dialogos : [],
+        cabecalho: cabecalho && typeof cabecalho === 'object' ? cabecalho : null,
+        classes: Array.isArray(classes) ? classes : [],
       };
       b.falhas = P.registrarFalha(b.falhas, b.pendente.tipo, t);
       b.pendente = null;

@@ -265,8 +265,30 @@ function limparDialogos(raw) {
       dts,
       titulo: o.titulo === true,
       campoTexto: o.campoTexto === true,
+      antes: typeof o.antes === 'boolean' ? o.antes : null,
     };
   });
+}
+
+// Cabeçalho do centro: achado estrito, até 4 níveis, nomes curtos e contagens com teto. Booleanos só se forem true.
+const CADEIA_MAX = 4;
+
+function limparCabecalho(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw;
+  const cadeia = Array.isArray(o.cadeia)
+    ? o.cadeia.slice(0, CADEIA_MAX).map((n) => {
+      const x = n && typeof n === 'object' ? n : {};
+      return {
+        no: textoCurto(x.no),
+        botoes: contagemLimpa(x.botoes),
+        titulo: x.titulo === true,
+        resumo: x.resumo === true,
+        dialogo: x.dialogo === true,
+      };
+    })
+    : [];
+  return { achado: o.achado === true, cadeia };
 }
 
 function limparResultado(raw) {
@@ -285,8 +307,11 @@ function limparResultado(raw) {
     fase,
     clicou: raw.clicou === true,
     pistas: limparPistas(raw.pistas),
+    pistasAntes: Array.isArray(raw.pistasAntes) ? limparPistas(raw.pistasAntes) : null,
     dialogoAntes: raw.dialogoAntes === true,
     dialogos: limparDialogos(raw.dialogos),
+    cabecalho: limparCabecalho(raw.cabecalho),
+    classes: limparPistas(raw.classes).slice(0, 8),
   };
 }
 

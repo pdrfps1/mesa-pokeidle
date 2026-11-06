@@ -1,5 +1,74 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · cabeçalho do centro no diagnóstico do resgate da Twitch
+
+> O diagnóstico do resgate agora mostra de qual contêiner veio o cabeçalho do centro de recompensas e quais classes de contêiner existem na página. O clique não mudou: é leitura para a próxima falha real.
+
+### Destaques do patch
+- **Cadeia do cabeçalho:** até 4 ancestrais de `[id*="reward-center-header"]`, com tag, id, primeira classe, `data-test-selector`, role, botões, título, resumo e diálogo.
+- **Classes dos contêineres:** até 4 classes de `[class*="reward-center"]` e até 4 de `[class*="community-points"]`.
+- **Pistas antes do clique:** o resultado da falha traz as pistas lidas antes do clique no resumo.
+
+### Bônus Twitch
+*O diagnóstico mostra de onde veio o cabeçalho do centro, sem mudar o clique.*
+
+**Por quê.** O diag das 11:33 mostrou o cabeçalho `h#channel-points-reward-center-header` depois do clique. A lista abriu, mas nenhum seletor de `SELETORES.centro` casou, e a pista `div` sem atributos não dizia de qual contêiner veio.
+
+- `sem-centro` ⇒ `cabecalho` com até 4 níveis a partir do pai do cabeçalho; cada nível traz tag, id, primeira classe válida, `data-test-selector` e role (cortados), mais botões, título sim ou não, resumo sim ou não e diálogo sim ou não
+- `classes` ⇒ até 4 de `[class*="reward-center"]` (prefixo `rc:`) e até 4 de `[class*="community-points"]` (prefixo `cp:`), só classes com caracteres seguros
+- `pistasAntes` ⇒ pistas do centro lidas antes do clique no resumo
+- trecho «Diálogo#N» ⇒ usa o `antes` de cada diálogo quando ele vem booleano; o valor global só entra como fallback
+
+**NOVO**
+- resultado `sem-centro`: campos `pistasAntes`, `cabecalho` (`achado` e `cadeia`) e `classes`
+- painel: na linha de falha `sem-centro`, as linhas «Antes do clique», «Cabeçalho» (com a cadeia) e «Classes», quando o resultado as traz
+
+**NÃO MUDOU**
+- seletores (`SELETORES`, incluindo `centro`), espera de 6 s, `centroAberto`, `botaoPontos` e `pistaDe`
+- o clique: continua só no botão do resumo
+
+**RESULTADOS ANTIGOS**
+- resultados sem os campos novos não ganham as linhas novas: dado ausente não vira «não»
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `nivelDiag`, `cabecalhoDiag`, `classesPista` e `pistasAntes` no `sem-centro`
+- `dashboard/src/preload/twitch-page.js`: repasse de `pistasAntes`, `cabecalho` e `classes` no resultado
+- `dashboard/src/main/twitch/points.js`: `limparCabecalho` (até 4 níveis) e `classes` em `limparResultado`
+- `dashboard/src/main/twitch/controller.js`: repasse de `pistasAntes`, `cabecalho` e `classes` ao último resgate
+- `dashboard/src/renderer/live-bonus.js`: `liveBonusSemCentro` (Antes do clique, Cabeçalho com a cadeia, Classes)
+
+### Testes
+- `npm test` em `dashboard/`: **399** passaram, 0 falharam, em execução de 2026-11-06 (suíte inteira do projeto).
+- O código desta entrega ainda não está commitado: a diferença está no working tree contra `8e72879`.
+
+### Não confirmado
+- **Cadeia real e classe do contêiner:** só aparecem na próxima falha da Baía 2.
+- **Seletor do centro:** a escolha depende desse dado e ainda não foi decidida.
+- **Clique do resumo:** não é alterado por esta entrega.
+
+### Problemas conhecidos
+- O próximo passo é o usuário repetir o resgate na Baía 2 e colar a linha `Diag` e a linha de falha completa com `Cabeçalho`, `Classes` e `Antes do clique`.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · cabeçalho do centro no diagnóstico do resgate da Twitch**
+
+Resumo: na falha sem-centro, o diagnóstico mostra de onde veio o cabeçalho do centro e quais classes de contêiner existem na página. O clique não mudou.
+
+**Twitch / Pontos**
+- [Novo] A falha `sem-centro` informa a cadeia de até 4 níveis acima do cabeçalho do centro.
+- [Ajuste] Nenhum seletor mudou; o clique e a espera continuam iguais, e a leitura só observa.
+
+**Painel**
+- [Novo] Na falha `sem-centro`, as linhas «Antes do clique», «Cabeçalho» e «Classes» aparecem quando o resultado as traz.
+- [Ajuste] Resultado antigo, sem os campos novos, não mostra essas linhas.
+
+**Diagnóstico**
+- [Novo] Até 4 classes de `reward-center` e até 4 de `community-points`, só com caracteres seguros.
+
+**Problemas conhecidos**
+- A cadeia real e a classe do contêiner só aparecem na próxima falha da Baía 2. Próximo passo: repetir o resgate na Baía 2 e colar a linha `Diag` e a linha de falha completa.
+
 ## 2026-11-06 — Patch «Vigília» · diálogos no diagnóstico do resgate da Twitch
 
 > Quando o resgate falha como `sem-centro`, a Mesa lista o que existe dentro de cada diálogo da página. A leitura só observa: o clique não mudou, e o diagnóstico serve para decidir o próximo passo.

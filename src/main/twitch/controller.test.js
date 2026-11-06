@@ -373,6 +373,29 @@ describe('controller: resgate', () => {
     assert.deepEqual(u.dialogos, dialogos);
   });
 
+  it('pistasAntes, cabecalho e classes do resultado de falha vão para o último resgate; sem eles, defaults', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    const cabecalho = { achado: true, cadeia: [{ no: 'div#x', botoes: 2, titulo: false, resumo: true, dialogo: false }] };
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-centro', pistasAntes: ['div[dialog]'], cabecalho, classes: ['rc:div.a'] });
+    const u = ctx.c.snapshot().bays[0].ultimo;
+    assert.deepEqual(u.pistasAntes, ['div[dialog]']);
+    assert.deepEqual(u.cabecalho, cabecalho);
+    assert.deepEqual(u.classes, ['rc:div.a']);
+  });
+
+  it('pistasAntes e cabecalho ausentes viram null (sem default); classes ausente vira []', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-centro' });
+    const u = ctx.c.snapshot().bays[0].ultimo;
+    assert.equal(u.pistasAntes, null);
+    assert.equal(u.cabecalho, null);
+    assert.deepEqual(u.classes, []);
+  });
+
   it('vistos do resultado de falha vão para o último resgate', () => {
     const ctx = montar();
     abrir(ctx);

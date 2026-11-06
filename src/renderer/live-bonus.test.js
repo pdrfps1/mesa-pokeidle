@@ -239,6 +239,42 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
     assert.ok(dd, 'linha do sem-centro');
     assert.match(dd.textContent, /fase=buscar, clicou=sim\. Vi no DOM: div#reward-a\[dialog\], <b>x<\/b>$/);
+    assert.equal(dd.textContent.includes('Antes do clique'), false);
+    assert.equal(dd.textContent.includes('Cabeçalho'), false);
+    assert.equal(dd.children.length, 0);
+  });
+
+  it('sem-centro mostra antes do clique, cabeçalho com cadeia, classes e antes por diálogo, só em textContent', async () => {
+    const em = Date.now() - 1000;
+    const ultimo = {
+      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
+      fase: 'abrir', clicou: true, pistas: ['div#ra[dialog]', 'div#rb[dialog]'],
+      pistasAntes: ['div#ra[dialog]', '<b>x</b>'],
+      cabecalho: {
+        achado: true,
+        cadeia: [
+          { no: 'section#hdr-#.a#', botoes: 2, titulo: false, resumo: true, dialogo: false },
+          { no: 'div', botoes: 0, titulo: true, resumo: false, dialogo: true },
+        ],
+      },
+      classes: ['rc:div.reward-center', '<b>y</b>'],
+      dialogoAntes: false,
+      dialogos: [
+        { botoes: 1, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [], antes: true },
+        { botoes: 0, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [], antes: false },
+      ],
+    };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
+    assert.ok(dd, 'linha do sem-centro');
+    const fim = ', fase=abrir, clicou=sim. Vi no DOM: div#ra[dialog], div#rb[dialog]'
+      + '. Antes do clique: div#ra[dialog], <b>x</b>. Cabeçalho: sim'
+      + ' cadeia: section#hdr-#.a#(b=2,t=não,r=sim,d=não) > div(b=0,t=sim,r=não,d=sim)'
+      + '. Classes: rc:div.reward-center, <b>y</b>'
+      + '. Diálogo#1: antes=sim, título=não, botões=1, abas=0, itens: nenhum, dts: nenhum'
+      + ' / Diálogo#2: antes=não, título=não, botões=0, abas=0, itens: nenhum, dts: nenhum';
+    assert.ok(dd.textContent.endsWith(fim), dd.textContent);
     assert.equal(dd.children.length, 0);
   });
 
@@ -261,7 +297,27 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
     assert.ok(dd, 'linha do sem-centro');
     assert.match(dd.textContent, /fase=abrir, clicou=sim\. Vi no DOM: div\[dialog\]\. Diálogo#1: antes=sim, título=não, botões=2, abas=1, itens: close-btn\|tab-#\|Fechar #\|sim, dts: close-btn, <b>x<\/b>$/);
+    assert.equal(dd.textContent.includes('Antes do clique'), false);
+    assert.equal(dd.textContent.includes('Cabeçalho'), false);
     assert.equal(dd.children.length, 0);
+  });
+
+  it('resultado antigo passa por limparResultado: antes do diálogo cai no dialogoAntes e sem cabeçalho nem pistasAntes não mostra as linhas', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const bruto = {
+      id: 5, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true,
+      pistas: ['div[dialog]'], dialogoAntes: true,
+      dialogos: [{ botoes: 1, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [] }],
+    };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
+    assert.ok(dd, 'linha do sem-centro');
+    assert.match(dd.textContent, /fase=abrir, clicou=sim\. Vi no DOM: div\[dialog\]\. Diálogo#1: antes=sim, título=não, botões=1, abas=0, itens: nenhum, dts: nenhum$/);
+    assert.equal(dd.textContent.includes('Cabeçalho'), false);
+    assert.equal(dd.textContent.includes('Antes do clique'), false);
   });
 
   it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
@@ -271,6 +327,8 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
     assert.ok(dd, 'linha do sem-centro');
     assert.match(dd.textContent, /fase=-, clicou=não$/);
+    assert.equal(dd.textContent.includes('Antes do clique'), false);
+    assert.equal(dd.textContent.includes('Cabeçalho'), false);
     assert.equal(dd.textContent.includes('Vi no DOM'), false);
   });
 });

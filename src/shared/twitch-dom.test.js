@@ -361,7 +361,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.mapa[S.centro[0]] = centro; };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(item.clicks, 1);
   });
@@ -383,7 +383,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
       pausa: () => Promise.resolve(),
     };
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [], dialogoAntes: false, dialogos: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(resumo.clicks, 0);
   });
@@ -398,7 +398,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     const resumo = el({ tag: 'button', textContent: '1.234' });
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(item.clicks, 1);
     assert.equal(resumo.clicks, 0);
@@ -411,7 +411,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
-      estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }],
+      estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(resumo.clicks, 1);
     assert.equal(alheio.clicks, 0);
@@ -472,6 +472,7 @@ describe('dialogosDiag e dialogoAntes (diagnóstico do sem-centro)', () => {
       dts: ['close-btn'],
       titulo: true,
       campoTexto: false,
+      antes: false,
     }]);
   });
 
@@ -560,6 +561,143 @@ describe('dialogosDiag e dialogoAntes (diagnóstico do sem-centro)', () => {
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
     assert.equal(res.dialogoAntes, false);
     assert.deepEqual(res.dialogos, []);
+  });
+});
+
+describe('cabecalhoDiag, classesPista e antes por diálogo (diagnóstico do sem-centro)', () => {
+  const esperarJa = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
+
+  // Cadeia de ancestrais a partir de um cabeçalho: o primeiro da lista é o pai direto.
+  function cadeiaDe(niveis) {
+    const h = el({ tag: 'h2', id: 'channel-points-reward-center-header' });
+    let atual = h;
+    for (const nivel of niveis) {
+      const pai = el(nivel);
+      atual.parent = pai;
+      atual = pai;
+    }
+    return h;
+  }
+
+  it('cabecalhoDiag sem cabeçalho: achado false e cadeia vazia', () => {
+    assert.deepEqual(D.cabecalhoDiag(doc({}), 'Bônus XP'), { achado: false, cadeia: [] });
+  });
+
+  it('cabecalhoDiag: cadeia de 5 níveis corta em 4; no curto, classe válida e atributos curtos', () => {
+    const h = cadeiaDe([
+      { tag: 'section', attrs: { id: 'hdr-1', class: 'a1 b c', 'data-test-selector': 'rc-2', role: 'region' } },
+      { tag: 'div', attrs: {} },
+      { tag: 'div', textContent: 'Bônus XP 300' },
+      { tag: 'div', closest: () => ({ tag: 'div' }) },
+      { tag: 'div' },
+    ]);
+    const r = D.cabecalhoDiag(doc({ '[id*="reward-center-header" i]': h }), 'Bônus XP');
+    assert.equal(r.achado, true);
+    assert.equal(r.cadeia.length, 4);
+    assert.deepEqual(r.cadeia[0], { no: 'section#hdr-#.a#[rc-#][region]', botoes: 0, titulo: false, resumo: false, dialogo: false });
+    assert.equal(r.cadeia[1].no, 'div');
+    assert.equal(r.cadeia[2].titulo, true);
+    assert.equal(r.cadeia[3].dialogo, true);
+  });
+
+  it('cabecalhoDiag: classe com caractere inválido e classe com dígito', () => {
+    const h = cadeiaDe([
+      { tag: 'div', attrs: { class: 'bad!x' } },
+      { tag: 'div', attrs: { class: 'ok-1 bad!cls' } },
+    ]);
+    const r = D.cabecalhoDiag(doc({ '[id*="reward-center-header" i]': h }), 'Bônus XP');
+    assert.equal(r.cadeia[0].no, 'div');
+    assert.equal(r.cadeia[1].no, 'div.ok-#');
+  });
+
+  it('cabecalhoDiag: getAttribute que lança não quebra e cai no nome da tag', () => {
+    const h = cadeiaDe([{ tag: 'div', attrs: { class: 'x' } }]);
+    h.parent.getAttribute = () => { throw new Error('boom'); };
+    const r = D.cabecalhoDiag(doc({ '[id*="reward-center-header" i]': h }), 'Bônus XP');
+    assert.equal(r.achado, true);
+    assert.equal(r.cadeia[0].no, 'div');
+  });
+
+  it('cabecalhoDiag: resumo vem de contém e botões com teto', () => {
+    const pai = el({ tag: 'div' });
+    pai.listas['button,[role="button"]'] = Array.from({ length: 3 }, () => el({ tag: 'button' }));
+    pai.listas['[data-test-selector="community-points-summary"]'] = [el({ tag: 'div' })];
+    const h = cadeiaDe([]);
+    h.parent = pai;
+    const r = D.cabecalhoDiag(doc({ '[id*="reward-center-header" i]': h }), 'Bônus XP');
+    assert.equal(r.cadeia[0].botoes, 3);
+    assert.equal(r.cadeia[0].resumo, true);
+  });
+
+  it('classesPista: rc: e cp:, até 4 de cada, só classes válidas, sem repetição', () => {
+    const d = doc();
+    const rc = ['a', 'b', 'c', 'd', 'e'].map((l) => el({ tag: 'div', attrs: { class: `reward-center-${l} a1 bad!x` } }));
+    const cp = [el({ tag: 'section', attrs: { class: 'cp-x' } }), el({ tag: 'section', attrs: { class: 'cp-x' } })];
+    d.querySelectorAll = (sel) => {
+      if (sel === '[class*="reward-center"]') return rc;
+      if (sel === '[class*="community-points"]') return cp;
+      return [];
+    };
+    const classes = D.classesPista(d);
+    assert.equal(classes.length, 5);
+    assert.equal(classes[0], 'rc:div.reward-center-a.a#');
+    assert.equal(classes.filter((c) => c.startsWith('rc:')).length, 4);
+    assert.deepEqual(classes.filter((c) => c.startsWith('cp:')), ['cp:section.cp-x']);
+  });
+
+  it('classesPista sem contêiner e com querySelectorAll que lança: lista vazia', () => {
+    assert.deepEqual(D.classesPista(doc()), []);
+    assert.deepEqual(D.classesPista({ querySelectorAll() { throw new Error('boom'); } }), []);
+  });
+
+  it('dialogosDiag com antesSet: antes por diálogo; sem o conjunto, antes false', () => {
+    const a = el({ tag: 'div', textContent: 'a', attrs: { role: 'dialog' } });
+    const b = el({ tag: 'div', textContent: 'b', attrs: { role: 'dialog' } });
+    const d = doc({}, [a, b]);
+    assert.deepEqual(D.dialogosDiag(d, 'x').map((x) => x.antes), [false, false]);
+    assert.deepEqual(D.dialogosDiag(d, 'x', new Set([a])).map((x) => x.antes), [true, false]);
+  });
+
+  it('pistasAntes é diferente de pistas: o diálogo que surge no clique só entra em pistas', async () => {
+    const d = doc({}, []);
+    const pre = el({ tag: 'div', id: 'ra', attrs: { role: 'dialog' } });
+    d.dialogos.push(pre);
+    const depois = el({ tag: 'div', id: 'rb', attrs: { role: 'dialog' } });
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => { d.dialogos.push(depois); };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.deepEqual(res.pistasAntes, ['div#ra[dialog]']);
+    assert.deepEqual(res.pistas, ['div#ra[dialog]', 'div#rb[dialog]']);
+    assert.deepEqual(res.dialogos.map((x) => x.antes), [true, false]);
+  });
+
+  it('antes por diálogo: um já aberto antes e outro aberto pelo clique', async () => {
+    const d = doc({}, []);
+    const jaAberto = el({ tag: 'div', textContent: 'velho', attrs: { role: 'dialog' } });
+    d.dialogos.push(jaAberto);
+    const novo = el({ tag: 'div', textContent: 'novo', attrs: { role: 'dialog' } });
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => { d.dialogos.push(novo); };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.dialogos[0].antes, true);
+    assert.equal(res.dialogos[1].antes, false);
+    assert.equal(res.dialogoAntes, false);
+  });
+
+  it('sem-centro leva cabecalho e classes do DOM; titulo marcado na cadeia', async () => {
+    const d = doc();
+    const h = cadeiaDe([{ tag: 'div', textContent: 'Bônus XP 300' }]);
+    d.mapa['[id*="reward-center-header" i]'] = h;
+    d.querySelectorAll = (sel) => (sel === '[class*="reward-center"]' ? [el({ tag: 'div', attrs: { class: 'rc-z' } })] : []);
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.motivo, 'sem-centro');
+    assert.equal(res.cabecalho.achado, true);
+    assert.equal(res.cabecalho.cadeia[0].titulo, true);
+    assert.deepEqual(res.classes, ['rc:div.rc-z']);
   });
 });
 
@@ -911,7 +1049,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     // Pré-checagem clica o resumo (nenhum centro aberto); o painel genérico não entra na conta.
@@ -933,7 +1071,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
@@ -971,7 +1109,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -985,7 +1123,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1018,7 +1156,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
       pausa: () => Promise.resolve(),
     };
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [] });
+    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1029,7 +1167,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [], dialogoAntes: false, dialogos: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.deepEqual(ordem, ['resumo']);
   });
 
@@ -1045,7 +1183,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { if (!d.dialogos.includes(generico)) d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false }] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
   });

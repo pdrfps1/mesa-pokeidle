@@ -123,9 +123,38 @@ function liveBonusDialogos(dialogos, antes) {
     const itens = (Array.isArray(d.itens) ? d.itens.filter((it) => it && typeof it === 'object') : [])
       .map((it) => `${texto(it.dts)}|${texto(it.alvo)}|${texto(it.aria)}|${sim(it.tab)}`);
     const dts = (Array.isArray(d.dts) ? d.dts : []).filter((t) => typeof t === 'string' && t);
-    return `Diálogo#${i + 1}: antes=${sim(antes)}, título=${sim(d.titulo)}, botões=${numero(d.botoes)}, abas=${numero(d.abas)}`
+    // Antes por diálogo quando vem booleano; o valor global só entra como fallback.
+    const antesDele = typeof d.antes === 'boolean' ? d.antes : antes;
+    return `Diálogo#${i + 1}: antes=${sim(antesDele)}, título=${sim(d.titulo)}, botões=${numero(d.botoes)}, abas=${numero(d.abas)}`
       + `, itens: ${itens.length ? itens.join('; ') : 'nenhum'}, dts: ${dts.length ? dts.join(', ') : 'nenhum'}`;
   }).join(' / ');
+}
+
+// Diagnóstico do sem-centro: pistas de antes do clique, cabeçalho com a cadeia e classes. Só texto curto e sim/não.
+function liveBonusSemCentro(ultimo) {
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const texto = (v) => (typeof v === 'string' && v ? v : '-');
+  const numero = (v) => (Number.isFinite(v) ? v : 0);
+  const lista = (v) => (Array.isArray(v) ? v.filter((p) => typeof p === 'string' && p) : []);
+  // Resultado antigo, sem o campo: a linha some em vez de mostrar 'nenhuma' ou 'não'.
+  let out = '';
+  if (Array.isArray(ultimo.pistasAntes)) {
+    const antes = lista(ultimo.pistasAntes);
+    out += `. Antes do clique: ${antes.length ? antes.join(', ') : 'nenhuma'}`;
+  }
+  const cab = ultimo.cabecalho;
+  if (cab && typeof cab === 'object') {
+    const achou = cab.achado === true;
+    out += `. Cabeçalho: ${sim(achou)}`;
+    if (achou) {
+      const nos = (Array.isArray(cab.cadeia) ? cab.cadeia : []).filter((n) => n && typeof n === 'object')
+        .map((n) => `${texto(n.no)}(b=${numero(n.botoes)},t=${sim(n.titulo)},r=${sim(n.resumo)},d=${sim(n.dialogo)})`);
+      out += ` cadeia: ${nos.length ? nos.join(' > ') : 'nenhuma'}`;
+    }
+  }
+  const classes = lista(ultimo.classes);
+  if (classes.length) out += `. Classes: ${classes.join(', ')}`;
+  return out;
 }
 
 function liveBonusUltimo(ultimo) {
@@ -139,6 +168,7 @@ function liveBonusUltimo(ultimo) {
       base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;
       const pistas = Array.isArray(ultimo.pistas) ? ultimo.pistas.filter((p) => typeof p === 'string' && p) : [];
       if (pistas.length) base += `. Vi no DOM: ${pistas.join(', ')}`;
+      base += liveBonusSemCentro(ultimo);
       const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
       return dialogos ? `${base}. ${dialogos}` : base;
     }

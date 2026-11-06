@@ -49,7 +49,7 @@ const { ipcRenderer } = require('electron');
       }
       ocupado = true;
       D.resgatar(document, { titulo: cmd.titulo, custo: cmd.custo }, { esperar: D.esperar, pausa: D.pausa })
-        .then((res) => enviarResultado({ id: cmd.id, estado: res.estado, motivo: res.motivo, vistos: res.vistos, fase: res.fase, clicou: res.clicou, pistas: res.pistas, dialogoAntes: res.dialogoAntes, dialogos: res.dialogos }))
+        .then((res) => enviarResultado({ id: cmd.id, estado: res.estado, motivo: res.motivo, vistos: res.vistos, fase: res.fase, clicou: res.clicou, pistas: res.pistas, pistasAntes: res.pistasAntes, dialogoAntes: res.dialogoAntes, dialogos: res.dialogos, cabecalho: res.cabecalho, classes: res.classes }))
         .catch(() => enviarResultado({ id: cmd.id, estado: 'falhou', motivo: 'outro' }))
         .finally(() => { ocupado = false; });
     }

@@ -153,12 +153,16 @@ var MESA_TWITCH_DOM = (function () {
   }
 
   // Diagnóstico do sem-centro: até 2 [role="dialog"], com botões, abas, itens, dts e booleanos. Nunca textContent.
-  function dialogosDiag(doc, titulo) {
+  // antesSet: diálogos que já existiam antes do clique no resumo. Sem ele, antes fica false.
+  function dialogosDiag(doc, titulo, antesSet) {
     let lista = [];
     try { lista = Array.from(doc.querySelectorAll('[role="dialog"]')).slice(0, 2); } catch { lista = []; }
     const alvo = normal(titulo);
     return lista.map((dialogo) => {
-      const out = { botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false };
+      const out = {
+        botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false,
+        antes: antesSet ? antesSet.has(dialogo) : false,
+      };
       let botoes = [];
       let abas = [];
       try { botoes = Array.from(dialogo.querySelectorAll('button,[role="button"]')); } catch { botoes = []; }
@@ -187,6 +191,68 @@ var MESA_TWITCH_DOM = (function () {
       try { out.campoTexto = !!primeiro(dialogo, SELETORES.campoTexto); } catch { out.campoTexto = false; }
       return out;
     });
+  }
+
+  // Diagnóstico: seguro devolve o valor de fallback se o DOM lançar.
+  function seguro(fn, falha) {
+    try { return fn(); } catch { return falha; }
+  }
+
+  const CLASSE_VALIDA = /^[A-Za-z0-9_-]+$/;
+
+  // Um nível da cadeia do cabeçalho: nome curto e booleanos/contagens. Nunca textContent.
+  function nivelDiag(anc, alvo) {
+    return {
+      no: seguro(() => {
+        const classe = String(atributo(anc, 'class') || '').split(/\s+/).find((c) => CLASSE_VALIDA.test(c)) || '';
+        const id = curto(atributo(anc, 'id'));
+        const dts = curto(atributo(anc, 'data-test-selector'));
+        const role = curto(atributo(anc, 'role'));
+        let no = curto(String(anc.tagName || '').toLowerCase());
+        if (id) no += '#' + id;
+        if (classe) no += '.' + curto(classe);
+        if (dts) no += '[' + dts + ']';
+        if (role) no += '[' + role + ']';
+        return curto(no);
+      }, ''),
+      botoes: seguro(() => Math.min(999, anc.querySelectorAll('button,[role="button"]').length), 0),
+      titulo: seguro(() => !!alvo && normal(textoDe(anc)).includes(alvo), false),
+      resumo: seguro(() => !!anc.querySelector('[data-test-selector="community-points-summary"]'), false),
+      dialogo: seguro(() => !!anc.closest('[role="dialog"]'), false),
+    };
+  }
+
+  // Cabeçalho do centro (só diagnóstico, fora de SELETORES): até 4 ancestrais a partir do pai.
+  function cabecalhoDiag(doc, titulo) {
+    return seguro(() => {
+      const h = doc.querySelector('[id*="reward-center-header" i]');
+      if (!h) return { achado: false, cadeia: [] };
+      const alvo = normal(titulo);
+      const cadeia = [];
+      for (let anc = h.parentElement; anc && cadeia.length < 4; anc = anc.parentElement) {
+        cadeia.push(nivelDiag(anc, alvo));
+      }
+      return { achado: true, cadeia };
+    }, { achado: false, cadeia: [] });
+  }
+
+  // Classes dos contêineres de reward-center (rc:) e community-points (cp:), até 4 de cada. Só classes válidas.
+  const CLASSES_PISTA = [['rc:', '[class*="reward-center"]'], ['cp:', '[class*="community-points"]']];
+
+  function classesPista(doc) {
+    const out = [];
+    for (const [prefixo, sel] of CLASSES_PISTA) {
+      const itens = seguro(() => Array.from(doc.querySelectorAll(sel)).slice(0, 4), []);
+      for (const el of itens) {
+        const s = seguro(() => {
+          const tokens = String(atributo(el, 'class') || '').split(/\s+/).filter((c) => CLASSE_VALIDA.test(c));
+          const base = prefixo + String(el.tagName || '').toLowerCase();
+          return curto(tokens.length ? base + '.' + tokens.join('.') : base);
+        }, '');
+        if (s && !out.includes(s)) out.push(s);
+      }
+    }
+    return out;
   }
 
   // Mesma regra de parsePontos (main/twitch/points.js). O preload não importa o módulo, então a regra fica repetida aqui.
@@ -432,17 +498,25 @@ var MESA_TWITCH_DOM = (function () {
     // Diagnóstico: havia diálogo antes do clique no resumo?
     let dialogoAntes = false;
     try { dialogoAntes = !!doc.querySelector('[role="dialog"]'); } catch { dialogoAntes = false; }
+    // Diagnóstico: pistas e diálogos que já existiam antes do clique no resumo (só DOM, nunca texto).
+    let pistasAntes = [];
+    try { pistasAntes = pistasCentro(doc); } catch { pistasAntes = []; }
+    let dialogosAntes = new Set();
+    try { dialogosAntes = new Set(doc.querySelectorAll('[role="dialog"]')); } catch { dialogosAntes = new Set(); }
     let clicou = false;
     if (!achaCentro()) clicou = clicar(resumo);
-    // Diagnóstico do sem-centro: fase em que faltou o centro, se o clique no resumo foi feito, pistas e diálogos do DOM.
+    // Diagnóstico do sem-centro: fase em que faltou o centro, se o clique no resumo foi feito, pistas, cabeçalho, classes e diálogos do DOM.
     const semCentro = (fase) => ({
       estado: 'falhou',
       motivo: 'sem-centro',
       fase,
       clicou,
       pistas: pistasCentro(doc),
+      pistasAntes,
       dialogoAntes,
-      dialogos: dialogosDiag(doc, pedido.titulo),
+      dialogos: dialogosDiag(doc, pedido.titulo, dialogosAntes),
+      cabecalho: cabecalhoDiag(doc, pedido.titulo),
+      classes: classesPista(doc),
     });
     const centro = await deps.esperar(achaCentro, 6000);
     if (!centro) return semCentro('abrir');
@@ -503,6 +577,8 @@ var MESA_TWITCH_DOM = (function () {
     pausa,
     resgatar,
     dialogosDiag,
+    cabecalhoDiag,
+    classesPista,
   };
 })();
 
