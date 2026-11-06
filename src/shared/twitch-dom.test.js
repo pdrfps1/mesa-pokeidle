@@ -244,11 +244,21 @@ describe('botoesDoCentro', () => {
     assert.deepEqual(out.map((b) => [b.tab, b.desab]), [[true, false], [false, true], [false, true]]);
   });
 
-  it('limite de 8 botões, total conta todos', () => {
-    const botoes = Array.from({ length: 10 }, () => el({ tag: 'button' }));
+  it('limite de 24 botões: 24 na ordem do DOM, total continua contando todos', () => {
+    const botoes = Array.from({ length: 25 }, (_, i) => el({ tag: 'button', attrs: { 'aria-label': 'Botao ' + String.fromCharCode(65 + i) } }));
     const d = doc({ [S.centro[0]]: centroCom(botoes) });
-    assert.equal(D.botoesDoCentro(d, 300).length, 8);
-    assert.equal(D.contarBotoesCentro(d), 10);
+    const out = D.botoesDoCentro(d, 300);
+    assert.equal(out.length, 24);
+    assert.equal(out[0].aria, 'Botao A');
+    assert.equal(out[23].aria, 'Botao X');
+    assert.equal(D.contarBotoesCentro(d), 25);
+  });
+
+  it('24 botões exatos: todos entram, total 24', () => {
+    const botoes = Array.from({ length: 24 }, () => el({ tag: 'button' }));
+    const d = doc({ [S.centro[0]]: centroCom(botoes) });
+    assert.equal(D.botoesDoCentro(d, 300).length, 24);
+    assert.equal(D.contarBotoesCentro(d), 24);
   });
 
   it('raiz null: devolve [] e total 0', () => {
@@ -290,32 +300,42 @@ describe('resgatar', () => {
   it('caminho feliz: resumo, item, botão e fecha o centro', async () => {
     const { d, ordem, deps } = cenario();
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'item', 'botao', 'resumo']);
+  });
+
+  it('cardClicado: busca por título clicada devolve o item; item desabilitado não clica e fica null', async () => {
+    const { d, deps } = cenario();
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
+    assert.deepEqual(res.cardClicado, { dts: '', alvo: '', aria: '', custo: false, desab: false });
+    const semClique = cenario({ itemDesabilitado: true });
+    const r2 = await D.resgatar(semClique.d, { titulo: 'Bônus XP', custo: 300 }, semClique.deps);
+    assert.equal(r2.motivo, 'indisponivel');
+    assert.equal(r2.cardClicado, null);
   });
 
   it('sem resumo: falha sem clicar em nada', async () => {
     const { d, ordem, deps } = cenario({ semResumo: true });
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'sem-resumo' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { cardClicado: null, estado: 'falhou', motivo: 'sem-resumo' });
     assert.deepEqual(ordem, []);
   });
 
   it('sem recompensa: fecha o centro', async () => {
     const { d, ordem, deps } = cenario({ semItem: true });
     // dialogos: [] entrou no sem-recompensa (diagnóstico); vistos segue só com custos.
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { cardClicado: null, estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [] });
     assert.deepEqual(ordem, ['resumo', 'resumo']);
   });
 
   it('recompensa desabilitada: indisponivel, e fecha', async () => {
     const { d, ordem, deps } = cenario({ itemDesabilitado: true });
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'indisponivel' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { cardClicado: null, estado: 'falhou', motivo: 'indisponivel' });
     assert.deepEqual(ordem, ['resumo', 'resumo']);
   });
 
   it('recompensa que pede texto: pede-texto, e fecha', async () => {
     const { d, ordem, deps } = cenario({ campo: true });
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'pede-texto' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'falhou', motivo: 'pede-texto' });
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
   });
 
@@ -330,14 +350,14 @@ describe('resgatar', () => {
     const { d, ordem, deps } = cenario({ semBotao: true });
     // Agora o sem-botao traz fase, trava e diálogos. Sem seletor dedicado a trava é sem-dedicado.
     const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado' });
     assert.ok(Array.isArray(dialogos));
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
   });
 
   it('botão de custo desabilitado: indisponivel', async () => {
     const { d, ordem, deps } = cenario({ botaoDesabilitado: true });
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { estado: 'falhou', motivo: 'indisponivel' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'falhou', motivo: 'indisponivel' });
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
   });
 });
@@ -425,6 +445,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.mapa[S.centro[0]] = centro; };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false },
       estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(item.clicks, 1);
@@ -447,6 +468,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
       pausa: () => Promise.resolve(),
     };
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps), {
+      cardClicado: null,
       estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: false, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(resumo.clicks, 0);
@@ -462,6 +484,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     const resumo = el({ tag: 'button', textContent: '1.234' });
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false },
       estado: 'falhou', motivo: 'sem-centro', fase: 'confirmar', clicou: true, pistas: [], dialogoAntes: false, dialogos: [], pistasAntes: [], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(item.clicks, 1);
@@ -475,6 +498,7 @@ describe('botões do resumo, fase e pistas do sem-centro', () => {
     resumo.onClick = () => { d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      cardClicado: null,
       estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 0, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [],
     });
     assert.equal(resumo.clicks, 1);
@@ -863,7 +887,7 @@ describe('botão de confirmação confere o custo no diálogo (O1)', () => {
     d.mapa[S.botaoPontos[0]] = resumo;
     const deps = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
     const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
     assert.ok(Array.isArray(dialogos));
     assert.equal(dedicado.clicks, 0);
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
@@ -1114,7 +1138,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     // Pré-checagem clica o resumo (nenhum centro aberto); o painel genérico não entra na conta.
@@ -1136,7 +1160,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
@@ -1158,7 +1182,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { d.mapa[S.centro[0]] = centro; };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'clicado', motivo: '' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'clicado', motivo: '' });
     assert.equal(item.clicks, 1);
     assert.equal(dedicado.clicks, 1);
     assert.equal(aviso.clicks, 0);
@@ -1174,7 +1198,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: true }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1188,7 +1212,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { ordem.push('resumo'); d.dialogos.push(alheio); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(aviso.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1221,7 +1245,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
       pausa: () => Promise.resolve(),
     };
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(res, { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'buscar', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1232,7 +1256,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: [], pistasAntes: [], dialogoAntes: false, dialogos: [], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.deepEqual(ordem, ['resumo']);
   });
 
@@ -1248,7 +1272,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     const resumo = el({ tag: 'button', textContent: '1.234' });
     resumo.onClick = () => { if (!d.dialogos.includes(generico)) d.dialogos.push(generico); };
     d.mapa[S.botaoPontos[0]] = resumo;
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: [], dialogoAntes: false, dialogos: [{ botoes: 1, abas: 0, itens: [], dts: [], titulo: false, campoTexto: false, antes: false }], cabecalho: { achado: false, cadeia: [] }, classes: [] });
     assert.equal(item.clicks, 0);
     assert.equal(dedicado.clicks, 0);
   });
@@ -1274,7 +1298,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     resumo.onClick = () => ordem.push('resumo');
     d.mapa[S.botaoPontos[0]] = resumo;
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'recompensa-ambigua', vistos: ['Bônus XP (2x)', 'Bônus XP (3x)'] });
+    assert.deepEqual(res, { cardClicado: null, estado: 'falhou', motivo: 'recompensa-ambigua', vistos: ['Bônus XP (2x)', 'Bônus XP (3x)'] });
     assert.equal(a.clicks + b.clicks, 0);
     assert.deepEqual(ordem, ['resumo']);
   });
@@ -1299,6 +1323,7 @@ describe('centro, diálogos e títulos (diagnóstico de sem-recompensa)', () => 
     // Antes vinham os títulos ('Hidratar 500', 60 x); agora o vistos é só o custo.
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
     assert.deepEqual(res, {
+      cardClicado: null,
       estado: 'falhou', motivo: 'sem-recompensa', vistos: ['500'], dialogos: [],
     });
     // Nenhum texto de card (título longo, 'Hidratar 500') pode entrar em vistos.
@@ -1572,7 +1597,7 @@ describe('centro pelo cabeçalho com id específico (diálogo que contém o cabe
   it('T1 caminho feliz: cabeçalho num intermediário dentro de role=dialog, item e dedicado no diálogo', async () => {
     const { d, ordem, item, botao } = cenarioCabecalho();
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
-    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'item', 'confirma', 'resumo']);
     assert.equal(item.clicks, 1);
     assert.equal(botao.clicks, 1);
@@ -1611,7 +1636,7 @@ describe('centro pelo cabeçalho com id específico (diálogo que contém o cabe
     const ext = dialogoExtensao(ordem, 'ext');
     d.dialogos.push(ext.dialogo);
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
-    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'item', 'confirma', 'resumo']);
     assert.equal(item.clicks, 1);
     assert.equal(botao.clicks, 1);
@@ -1625,7 +1650,7 @@ describe('centro pelo cabeçalho com id específico (diálogo que contém o cabe
     d.dialogos.push(ext.dialogo);
     d.mapa[S.resgatar[0]] = ext.botao;
     const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
-    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
     assert.ok(Array.isArray(dialogos));
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
     assert.equal(ext.botao.clicks, 0);
@@ -1635,7 +1660,7 @@ describe('centro pelo cabeçalho com id específico (diálogo que contém o cabe
   it('T5 centro já aberto antes do resgate: sem clique no resumo no pré-check, só o do fechamento', async () => {
     const { d, ordem } = cenarioCabecalho({ jaAberto: true });
     const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
-    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(res, { cardClicado: { dts: '', alvo: '', aria: '', custo: false, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['item', 'confirma', 'resumo']);
     assert.equal(ordem.filter((x) => x === 'resumo').length, 1);
   });
@@ -1687,7 +1712,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
     const redeem = el({ tag: 'button', textContent: '' });
     redeem.onClick = () => ordem.push('redeem');
     const botoes = cards.map((c) => {
-      const b = el({ tag: 'button', textContent: c.custo, disabled: c.desabilitado === true });
+      const b = el({ tag: 'button', textContent: c.custo, disabled: c.desabilitado === true, attrs: c.attrs || {} });
       if (c.escondido) {
         const folha = el({ tag: 'span', textContent: c.escondido });
         folha.parent = b;
@@ -1748,9 +1773,35 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'card500', custo: '500', titulo: 'Hidratar' },
       { nome: 'card900', custo: '900', titulo: 'Outro' },
     ]);
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'clicado', motivo: '' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: { dts: '', alvo: '', aria: '', custo: true, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'card300', 'redeem', 'resumo']);
     assert.equal(redeem.clicks, 1);
+  });
+
+  it('cardClicado: card do custo clicado devolve dts, alvo e aria curtos, custo true e sem texto', async () => {
+    const { d, ordem } = cenarioCusto([
+      { nome: 'card300', custo: '300', titulo: 'Bônus XP', attrs: { 'data-test-selector': 'RewardCard12', 'data-a-target': 'reward-3', 'aria-label': 'Bônus XP 300' } },
+    ]);
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.estado, 'clicado');
+    assert.deepEqual(res.cardClicado, { dts: 'RewardCard##', alvo: 'reward-#', aria: 'Bônus XP ###', custo: true, desab: false });
+    assert.deepEqual(ordem, ['resumo', 'card300', 'redeem', 'resumo']);
+  });
+
+  it('cardClicado: sem nenhum card clicado fica null', async () => {
+    const { d } = cenarioCusto([]);
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.motivo, 'sem-recompensa');
+    assert.equal(res.cardClicado, null);
+  });
+
+  it('cardClicado: com dois cards clicados devolve o último', async () => {
+    const { d } = cenarioCusto([
+      { nome: 'card300a', custo: '300', titulo: 'Hidratar', attrs: { 'data-test-selector': 'A1' } },
+      { nome: 'card300b', custo: '300', titulo: 'Bônus XP', attrs: { 'data-test-selector': 'B2' } },
+    ]);
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.cardClicado.dts, 'B#');
   });
 
   it('card errado volta: fecha, reabre a lista e confere o próximo; só o certo recebe Redeem', async () => {
@@ -1758,7 +1809,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'card300a', custo: '300', titulo: 'Hidratar' },
       { nome: 'card300b', custo: '300', titulo: 'Bônus XP' },
     ]);
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'clicado', motivo: '' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: { dts: '', alvo: '', aria: '', custo: true, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'card300a', 'resumo', 'resumo', 'card300b', 'redeem', 'resumo']);
     assert.equal(ordem.filter((x) => x === 'redeem').length, 1);
   });
@@ -1768,7 +1819,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'card300a', custo: '300', titulo: 'Bônus XP 2x' },
       { nome: 'card300b', custo: '300', titulo: 'Bônus XP' },
     ]);
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'clicado', motivo: '' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: { dts: '', alvo: '', aria: '', custo: true, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'card300a', 'resumo', 'resumo', 'card300b', 'redeem', 'resumo']);
   });
 
@@ -1779,6 +1830,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'c', custo: '500', titulo: 'Terceiro' },
     ]);
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      cardClicado: { dts: '', alvo: '', aria: '', custo: true, desab: false },
       estado: 'falhou', motivo: 'sem-recompensa', vistos: ['300', '500'], dialogos: [],
     });
     assert.deepEqual(ordem, ['resumo', 'a', 'resumo', 'resumo', 'b', 'resumo']);
@@ -1788,6 +1840,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
   it('sem card do custo: sem-recompensa, nenhum clique em card', async () => {
     const { d, ordem } = cenarioCusto([{ nome: 'a', custo: '500', titulo: 'Hidratar' }]);
     assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), {
+      cardClicado: null,
       estado: 'falhou', motivo: 'sem-recompensa', vistos: ['500'], dialogos: [],
     });
     assert.deepEqual(ordem, ['resumo', 'resumo']);
@@ -1847,7 +1900,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'a', custo: '300', titulo: 'Bônus XP', desabilitado: true },
       { nome: 'b', custo: '300', titulo: 'Bônus XP', desabilitado: true },
     ]);
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'falhou', motivo: 'indisponivel' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: null, estado: 'falhou', motivo: 'indisponivel' });
     assert.deepEqual(ordem, ['resumo', 'resumo']);
   });
 
@@ -1856,7 +1909,7 @@ describe('fallback por custo: card abre o detalhe, título conferido antes do Re
       { nome: 'a', custo: '300', titulo: 'Bônus XP', desabilitado: true },
       { nome: 'b', custo: '300', titulo: 'Bônus XP' },
     ]);
-    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { estado: 'clicado', motivo: '' });
+    assert.deepEqual(await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa), { cardClicado: { dts: '', alvo: '', aria: '', custo: true, desab: false }, estado: 'clicado', motivo: '' });
     assert.deepEqual(ordem, ['resumo', 'b', 'redeem', 'resumo']);
     assert.equal(redeem.clicks, 1);
   });

@@ -113,13 +113,31 @@ function liveBonusAtivos(bay, decorrido) {
 }
 
 // Botões do centro no sem-botao: total e um item por botão (dts|alvo|aria|tab|custo|desab). Só texto.
+// Até 24 botões e corte de 1500 caracteres no fim da linha, para o painel não quebrar.
+const LIVE_BONUS_BOTOES_MAX = 24;
+const LIVE_BONUS_LINHA_MAX = 1500;
+
 function liveBonusBotoesCentro(ultimo) {
   const sim = (v) => (v === true ? 'sim' : 'não');
   const campo = (v) => (typeof v === 'string' && v ? v : '-');
   const lista = Array.isArray(ultimo.botoesCentro) ? ultimo.botoesCentro.filter((b) => b && typeof b === 'object') : [];
-  const itens = lista.map((b) => [campo(b.dts), campo(b.alvo), campo(b.aria), sim(b.tab), sim(b.custo), sim(b.desab)].join('|'));
+  const itens = lista.slice(0, LIVE_BONUS_BOTOES_MAX)
+    .map((b) => [campo(b.dts), campo(b.alvo), campo(b.aria), sim(b.tab), sim(b.custo), sim(b.desab)].join('|'));
   const total = Number.isFinite(ultimo.totalBotoesCentro) ? ultimo.totalBotoesCentro : 0;
-  return ` Botões do centro: total=${total}; ${itens.length ? itens.join('; ') : 'nenhum'}`;
+  const linha = ` Botões do centro: total=${total}; ${itens.length ? itens.join('; ') : 'nenhum'}`;
+  return linha.length > LIVE_BONUS_LINHA_MAX ? `${linha.slice(0, LIVE_BONUS_LINHA_MAX)}...` : linha;
+}
+
+// Card clicado no resgate por custo: dts|alvo|aria|custo|desab, ou 'nenhum'. Só texto.
+// Sem cardClicado (resultado antigo ou sem card), 'nenhum' só entra quando pedido (sem-botao).
+function liveBonusCardClicado(ultimo, mostrarNenhum) {
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const campo = (v) => (typeof v === 'string' && v ? v : '-');
+  const c = ultimo.cardClicado;
+  if (c && typeof c === 'object') {
+    return ` Card clicado: ${[campo(c.dts), campo(c.alvo), campo(c.aria), sim(c.custo), sim(c.desab)].join('|')}`;
+  }
+  return mostrarNenhum ? ' Card clicado: nenhum' : '';
 }
 
 // Diálogos do sem-centro: um trecho por diálogo. Strings só entram como texto, nunca como HTML.
@@ -178,7 +196,7 @@ function liveBonusUltimo(ultimo) {
       base += `, trava=${typeof ultimo.trava === 'string' && ultimo.trava ? ultimo.trava : '-'}`;
       const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
       const texto = dialogos ? `${base}. ${dialogos}` : base;
-      return texto + liveBonusBotoesCentro(ultimo);
+      return texto + liveBonusBotoesCentro(ultimo) + liveBonusCardClicado(ultimo, true);
     }
     if (ultimo.motivo === 'sem-centro') {
       base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;
@@ -189,7 +207,8 @@ function liveBonusUltimo(ultimo) {
       return dialogos ? `${base}. ${dialogos}` : base;
     }
     const vistos = Array.isArray(ultimo.vistos) ? ultimo.vistos.filter((t) => typeof t === 'string' && t) : [];
-    return vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;
+    const comVistos = vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;
+    return comVistos + liveBonusCardClicado(ultimo, false);
   }
   return `${nome} sem confirmação do jogo às ${hora}`;
 }

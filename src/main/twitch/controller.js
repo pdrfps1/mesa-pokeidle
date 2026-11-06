@@ -364,7 +364,7 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, botoesCentro, totalBotoesCentro, cabecalho, classes }) {
+  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, botoesCentro, totalBotoesCentro, cabecalho, classes, cardClicado = null }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -390,6 +390,7 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
         totalBotoesCentro: typeof totalBotoesCentro === 'number' ? totalBotoesCentro : 0,
         cabecalho: cabecalho && typeof cabecalho === 'object' ? cabecalho : null,
         classes: Array.isArray(classes) ? classes : [],
+        cardClicado: cardClicado && typeof cardClicado === 'object' ? cardClicado : null,
       };
       const u = b.ultimo;
       registrar({

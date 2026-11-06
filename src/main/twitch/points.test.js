@@ -308,8 +308,8 @@ describe('limparFatos e limparResultado', () => {
   });
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
-    // trava: '' entrou no resultado de falha (campo novo); o resto do formato não muda.
-    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], botoesCentro: [], totalBotoesCentro: 0, cabecalho: null, classes: [] };
+    // trava: '' entrou no resultado de falha (campo novo); cardClicado: null também (campo novo); o resto do formato não muda.
+    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], botoesCentro: [], totalBotoesCentro: 0, cabecalho: null, classes: [], cardClicado: null };
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
@@ -446,15 +446,24 @@ describe('limparFatos e limparResultado', () => {
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', cabecalho: { achado: 'sim', cadeia: 'x' } }).cabecalho, vazio);
   });
 
-  it('botoesCentro: até 8, texto curto, booleanos estritos; total finito com teto 999', () => {
-    const botoes = Array.from({ length: 10 }, (_, i) => ({ dts: 'A\u0007' + i, alvo: 'x'.repeat(60), aria: 'ok', tab: 'sim', custo: true, desab: 1 }));
+  it('botoesCentro: até 24, texto curto, booleanos estritos; total finito com teto 999', () => {
+    const botoes = Array.from({ length: 25 }, (_, i) => ({ dts: 'A\u0007' + i, alvo: 'x'.repeat(60), aria: 'ok', tab: 'sim', custo: true, desab: 1 }));
     const r = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', botoesCentro: botoes, totalBotoesCentro: 5000 });
-    assert.equal(r.botoesCentro.length, 8);
+    assert.equal(r.botoesCentro.length, 24);
     assert.deepEqual(r.botoesCentro[0], { dts: 'A#', alvo: 'x'.repeat(40), aria: 'ok', tab: false, custo: true, desab: false });
     assert.equal(r.totalBotoesCentro, 999);
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao' }).botoesCentro, []);
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', totalBotoesCentro: NaN }).totalBotoesCentro, 0);
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', totalBotoesCentro: '7' }).totalBotoesCentro, 0);
+  });
+
+  it('cardClicado: dts, alvo, aria curtos e custo/desab booleanos estritos; ausente ou inválido vira null', () => {
+    const r = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', cardClicado: { dts: 'R\u000712', alvo: 'x'.repeat(60), aria: 'ok', custo: 'sim', desab: 1 } });
+    assert.deepEqual(r.cardClicado, { dts: 'R##', alvo: 'x'.repeat(40), aria: 'ok', custo: false, desab: false });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', cardClicado: { dts: { x: 1 }, custo: true, desab: true } }).cardClicado,
+      { dts: '', alvo: '', aria: '', custo: true, desab: true });
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao' }).cardClicado, null);
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', cardClicado: 'texto' }).cardClicado, null);
   });
 
   it('cabecalho: até 4 níveis, no curto, contagens com teto, booleanos só se true estrito', () => {

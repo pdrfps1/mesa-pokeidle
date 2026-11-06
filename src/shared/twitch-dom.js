@@ -566,20 +566,28 @@ var MESA_TWITCH_DOM = (function () {
     return out;
   }
 
-  const BOTOES_CENTRO_MAX = 8;
+  const BOTOES_CENTRO_MAX = 24;
   const CONTAGEM_CENTRO_MAX = 999;
 
-  // Botões do centro para o diagnóstico do sem-botao: até 8, só atributos curtos e booleanos. O campo custo lê o texto do botão
-  // só para virar booleano; nenhum texto é exportado.
+  // Um botão em atributos curtos e booleanos: dts, alvo, aria, custo (o texto só vira booleano) e desab. Nenhum texto sai daqui.
+  function botaoDiag(b, custo) {
+    const alvo = Number(custo);
+    return {
+      dts: curto(atributo(b, 'data-test-selector')),
+      alvo: curto(atributo(b, 'data-a-target')),
+      aria: curto(atributo(b, 'aria-label')),
+      custo: seguro(() => numerosDe(textoDe(b)).includes(alvo), false),
+      desab: seguro(() => !!b.disabled || atributo(b, 'aria-disabled') === 'true', false),
+    };
+  }
+
+  // Botões do centro para o diagnóstico do sem-botao: até 24, na ordem do DOM, só atributos curtos e booleanos.
   function botoesDoCentro(doc, custo) {
     try {
       const raiz = centroAberto(doc);
       if (!raiz) return [];
-      const alvo = Number(custo);
       return Array.from(raiz.querySelectorAll('button,[role="button"]')).slice(0, BOTOES_CENTRO_MAX).map((b) => ({
-        dts: curto(atributo(b, 'data-test-selector')),
-        alvo: curto(atributo(b, 'data-a-target')),
-        aria: curto(atributo(b, 'aria-label')),
+        ...botaoDiag(b, custo),
         tab: seguro(() => {
           for (let x = b; x; x = x.parentElement) {
             if (atributo(x, 'role') === 'tab') return true;
@@ -587,8 +595,6 @@ var MESA_TWITCH_DOM = (function () {
           }
           return false;
         }, false),
-        custo: seguro(() => numerosDe(textoDe(b)).includes(alvo), false),
-        desab: seguro(() => !!b.disabled || atributo(b, 'aria-disabled') === 'true', false),
       }));
     } catch { return []; }
   }
@@ -636,7 +642,8 @@ var MESA_TWITCH_DOM = (function () {
 
   // Fallback por custo: abre cada card do custo, confere o título no detalhe e só então segue para o Redeem.
   // Card que não confere: fecha, reabre a lista e vai ao próximo. Nenhum clique além disso.
-  async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro) {
+  // ctx.card guarda a referência do último card clicado (diagnóstico do cardClicado).
+  async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx) {
     const { titulo, custo } = pedido;
     const diag = () => ({
       estado: 'falhou',
@@ -667,6 +674,7 @@ var MESA_TWITCH_DOM = (function () {
       if (!achaCentro()) return semCentro('confirmar');
       // Diagnóstico tirado com a lista aberta, antes do clique no card: depois de fechar o centro, custosVistos sairia vazio.
       const diagLista = diag();
+      ctx.card = habilitados[indice];
       clicar(habilitados[indice]);
       await deps.esperar(() => folhaTitulo(achaCentro(), titulo, atuais), 3000);
       if (!achaCentro()) return semCentro('confirmar');
@@ -687,7 +695,7 @@ var MESA_TWITCH_DOM = (function () {
   }
 
   // Fluxo do resgate: abre o centro, acha a recompensa pelo título, clica e confirma no botão de custo.
-  async function resgatar(doc, pedido, deps) {
+  async function resgatarFluxo(doc, pedido, deps, ctx) {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
     if (!resumo) return { estado: 'falhou', motivo: 'sem-resumo' };
     const achaCentro = () => centroAberto(doc);
@@ -729,14 +737,24 @@ var MESA_TWITCH_DOM = (function () {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'recompensa-ambigua', vistos };
     }
-    if (!item) return resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro);
+    if (!item) return resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx);
     if (desabilitado(item)) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };
     }
-    if (clicar(item)) clicou = true;
+    if (clicar(item)) {
+      clicou = true;
+      ctx.card = item;
+    }
     await deps.pausa(600);
     return confirmarResgate(doc, pedido, deps, achaCentro, semCentro);
+  }
+
+  // Resgate com o card clicado no retorno: cardClicado = { dts, alvo, aria, custo, desab } ou null se nenhum card foi clicado.
+  async function resgatar(doc, pedido, deps) {
+    const ctx = { card: null };
+    const r = await resgatarFluxo(doc, pedido, deps, ctx);
+    return Object.assign({}, r, { cardClicado: ctx.card ? botaoDiag(ctx.card, pedido.custo) : null });
   }
 
   return {

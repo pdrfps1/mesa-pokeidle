@@ -272,8 +272,8 @@ function limparDialogos(raw) {
   });
 }
 
-// Botões do centro no sem-botao: até 8, atributos curtos e booleanos estritos. Total com teto.
-const BOTOES_CENTRO_MAX_LIMPO = 8;
+// Botões do centro no sem-botao: até 24, atributos curtos e booleanos estritos. Total com teto.
+const BOTOES_CENTRO_MAX_LIMPO = 24;
 
 function limparBotoesCentro(raw) {
   if (!Array.isArray(raw)) return [];
@@ -288,6 +288,18 @@ function limparBotoesCentro(raw) {
       desab: o.desab === true,
     };
   });
+}
+
+// Card clicado no resgate por custo: dts, alvo, aria curtos e custo/desab booleanos estritos. Ausente ou inválido vira null.
+function limparCardClicado(raw) {
+  if (!raw || typeof raw !== 'object') return null;
+  return {
+    dts: textoCurto(raw.dts),
+    alvo: textoCurto(raw.alvo),
+    aria: textoCurto(raw.aria),
+    custo: raw.custo === true,
+    desab: raw.desab === true,
+  };
 }
 
 // Cabeçalho do centro: achado estrito, até 4 níveis, nomes curtos e contagens com teto. Booleanos só se forem true.
@@ -336,6 +348,7 @@ function limparResultado(raw) {
     totalBotoesCentro: contagemLimpa(raw.totalBotoesCentro),
     cabecalho: limparCabecalho(raw.cabecalho),
     classes: limparPistas(raw.classes).slice(0, 8),
+    cardClicado: limparCardClicado(raw.cardClicado),
   };
 }
 

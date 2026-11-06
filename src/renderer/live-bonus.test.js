@@ -329,7 +329,7 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     await esperar();
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
     assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /, trava=fora-do-centro Botões do centro: total=0; nenhum$/);
+    assert.match(dd.textContent, /, trava=fora-do-centro Botões do centro: total=0; nenhum Card clicado: nenhum$/);
     assert.equal(dd.innerHTML, undefined);
   });
 
@@ -343,8 +343,37 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     await esperar();
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
     assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /trava=sem-dedicado Botões do centro: total=3; <b>x<\/b>\|-\|-\|não\|sim\|não$/);
+    assert.match(dd.textContent, /trava=sem-dedicado Botões do centro: total=3; <b>x<\/b>\|-\|-\|não\|sim\|não Card clicado: nenhum$/);
     assert.equal(dd.innerHTML, undefined);
+  });
+
+  it('sem-botao mostra o card clicado como texto, com <b> literal', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const cardClicado = { dts: '<b>x</b>', alvo: '', aria: '', custo: true, desab: false };
+    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro', dialogos: [], cardClicado };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.match(dd.textContent, /Card clicado: <b>x<\/b>\|-\|-\|sim\|não$/);
+    assert.equal(dd.innerHTML, undefined);
+  });
+
+  it('sem-botao: renderer mostra no máximo 24 botões e corta a linha em 1500 caracteres', async () => {
+    const em = Date.now() - 1000;
+    const botoesCentro = Array.from({ length: 30 }, (_, i) => ({ dts: 'item' + String.fromCharCode(65 + i), alvo: 'a'.repeat(40), aria: 'b'.repeat(40), tab: false, custo: false, desab: false }));
+    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 30, cardClicado: null };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.ok(dd.textContent.includes('total=30'));
+    assert.ok(dd.textContent.includes('...'), 'linha cortada');
+    assert.ok(!dd.textContent.includes('itemY'), 'botão 25 não aparece');
+    assert.ok(dd.textContent.length < 1800, 'linha dentro do teto');
+    assert.ok(dd.textContent.endsWith('Card clicado: nenhum'));
   });
 
   it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
