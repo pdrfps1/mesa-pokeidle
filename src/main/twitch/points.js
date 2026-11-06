@@ -13,7 +13,8 @@ const JANELA_GANHO_MS = 1500000;
 const PAGINA_VELHA_MS = 15000;
 const MOTIVOS_PAGINA = ['sem-resumo', 'sem-centro', 'sem-recompensa', 'recompensa-ambigua', 'sem-botao', 'indisponivel', 'pede-texto', 'tempo', 'ocupado', 'outro'];
 // Travas de quem não deixou clicar no Redeem (lista fechada). Qualquer outro valor vira ''.
-const TRAVAS_PAGINA = ['sem-dedicado', 'fora-do-centro', 'cartao', 'outro-cartao', 'texto-solto', 'titulos', 'resto', 'descricao', 'custo'];
+const TRAVAS_PAGINA = ['sem-dedicado', 'fora-do-centro', 'cartao', 'outro-cartao', 'texto-solto', 'titulos', 'resto', 'descricao', 'custo',
+  'redeem-centro', 'redeem-detalhe', 'redeem-lista', 'redeem-nenhum', 'redeem-varios', 'redeem-velho', 'redeem-oculto', 'redeem-texto', 'redeem-atributo'];
 const VISTOS_MAX = 8;
 const VISTOS_TAMANHO = 45;
 const LOGIN_RE = /^[A-Za-z0-9_]{1,25}$/;
@@ -92,6 +93,11 @@ function restanteMs(ate, agoraServidor) {
   return Math.max(0, ate - agoraServidor);
 }
 
+// Prazo do bônus já passou no relógio do servidor. Prazo ausente, inválido ou relógio inválido não conta como passado.
+function bonusAcabou(ate, agoraServidor) {
+  return Number.isInteger(ate) && ate >= 0 && Number.isFinite(agoraServidor) && ate <= agoraServidor;
+}
+
 // Só resgata com o vínculo confirmado pelo jogo e com a mesma conta na janela da Twitch.
 function travaSeguranca({ vinculado, loginJogo, loginTwitch }) {
   if (vinculado !== true) return { ok: false, motivo: 'nao-vinculado' };
@@ -101,13 +107,18 @@ function travaSeguranca({ vinculado, loginJogo, loginTwitch }) {
   return { ok: true };
 }
 
-function escolherResgate({ tipos, limiarMin, bonus, agoraServidor, saldo, recompensas, falhas, agora }) {
+function escolherResgate({ tipos, bonus, agoraServidor, saldo, recompensas, falhas, agora, travados, leituraOk }) {
   if (!Array.isArray(tipos) || !tipos.length) return { espera: 'sem-tipos' };
-  const limite = limiarMin * 60000;
+  // Sem leitura válida do bônus e do relógio, nada é resgatado: o zero de antes não conta como prazo passado.
+  if (leituraOk !== true) return { espera: 'sem-leitura' };
   const bon = bonus && typeof bonus === 'object' ? bonus : {};
-  const precisa = tipos.filter((t) => restanteMs(bon[t], agoraServidor) < limite);
+  const precisa = tipos.filter((t) => bonusAcabou(bon[t], agoraServidor));
   if (!precisa.length) return { espera: 'em-dia' };
-  const livres = precisa.filter((t) => !(falhas && falhas[t] && falhas[t].ate > agora));
+  // Tipo com clique sem confirmação não resgata de novo (trava contra gasto duplo).
+  const travadosLista = Array.isArray(travados) ? travados : [];
+  const semTrava = precisa.filter((t) => !travadosLista.includes(t));
+  if (!semTrava.length) return { espera: 'sem-confirmacao' };
+  const livres = semTrava.filter((t) => !(falhas && falhas[t] && falhas[t].ate > agora));
   if (!livres.length) return { espera: 'pausado' };
   const lista = Array.isArray(recompensas) ? recompensas : [];
   const candidatos = [];
@@ -323,11 +334,155 @@ function limparCabecalho(raw) {
   return { achado: o.achado === true, cadeia };
 }
 
+// Percurso do resgate (diagnóstico): lista branca. Strings por textoCurto, booleanos estritos, contagens por contagemLimpa.
+// Caminho em lista fechada, trava em TRAVAS_PAGINA ou 'ok'. Ausente ou inválido vira null. Nunca texto da página.
+const CAMINHOS_PAGINA = ['titulo', 'custo', ''];
+const BLOQUEIOS_PAGINA = ['dedicado', 'titulo-visivel', ''];
+const CANDIDATOS_PERCURSO_MAX = 3;
+const ANCESTRAIS_PERCURSO_MAX = 3;
+const TRAVAS_OU_OK = [...TRAVAS_PAGINA, 'ok'];
+
+function travaOuNull(v) {
+  return TRAVAS_OU_OK.includes(v) ? v : null;
+}
+
+// Objeto de verdade: array não conta.
+function objetoOuNull(v) {
+  return v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+}
+
+function nivelPercurso(raw) {
+  const o = objetoOuNull(raw);
+  if (!o) return null;
+  return {
+    no: textoCurto(o.no),
+    botoes: contagemLimpa(o.botoes),
+    titulo: o.titulo === true,
+    resumo: o.resumo === true,
+    dialogo: o.dialogo === true,
+  };
+}
+
+function limparCandidato(raw) {
+  const o = objetoOuNull(raw);
+  if (!o) return null;
+  return {
+    dts: textoCurto(o.dts),
+    alvo: textoCurto(o.alvo),
+    aria: textoCurto(o.aria),
+    no: textoCurto(o.no),
+    anc: Array.isArray(o.anc) ? o.anc.slice(0, ANCESTRAIS_PERCURSO_MAX).map(nivelPercurso).filter(Boolean) : [],
+    novo: o.novo === true,
+    desab: o.desab === true,
+    trava: travaOuNull(o.trava),
+  };
+}
+
+function limparPercurso(raw) {
+  const o = objetoOuNull(raw);
+  if (!o) return null;
+  const clique = objetoOuNull(o.clique);
+  const rejeitado = objetoOuNull(o.rejeitado);
+  const lista = objetoOuNull(o.lista);
+  const pos = objetoOuNull(o.pos);
+  const folhas = objetoOuNull(o.folhas);
+  const escopo = objetoOuNull(o.escopo);
+  const out = {
+    caminho: CAMINHOS_PAGINA.includes(o.caminho) ? o.caminho : '',
+    bloqueio: BLOQUEIOS_PAGINA.includes(o.bloqueio) ? o.bloqueio : '',
+    clique: clique
+      ? { tag: textoCurto(clique.tag), role: textoCurto(clique.role), emBotao: clique.emBotao === true }
+      : null,
+    rejeitado: rejeitado
+      ? {
+        tag: textoCurto(rejeitado.tag),
+        role: textoCurto(rejeitado.role),
+        emBotao: rejeitado.emBotao === true,
+        custo: rejeitado.custo === true,
+        visivel: rejeitado.visivel === true,
+      }
+      : null,
+    lista: lista ? { cards: contagemLimpa(lista.cards), comCusto: contagemLimpa(lista.comCusto) } : null,
+    pos: pos
+      ? {
+        centro: pos.centro === true,
+        titulo: pos.titulo === true,
+        cardPresente: pos.cardPresente === true,
+        filtros: pos.filtros === true,
+        novos: contagemLimpa(pos.novos),
+      }
+      : null,
+    folhas: folhas
+      ? {
+        total: contagemLimpa(folhas.total),
+        titulos: contagemLimpa(folhas.titulos),
+        custos: contagemLimpa(folhas.custos),
+        resto: contagemLimpa(folhas.resto),
+        saldo: folhas.saldo === true,
+      }
+      : null,
+    escopo: escopo ? { no: textoCurto(escopo.no), botoes: contagemLimpa(escopo.botoes), trava: travaOuNull(escopo.trava) } : null,
+    candidatos: Array.isArray(o.candidatos) ? o.candidatos.slice(0, CANDIDATOS_PERCURSO_MAX).map(limparCandidato).filter(Boolean) : [],
+    foraDoCentro: contagemLimpa(o.foraDoCentro),
+  };
+  if (objetoOuNull(o.redeem)) out.redeem = limparRedeem(o.redeem);
+  return out;
+}
+
+// Redeem por texto (diagnóstico): booleanos estritos, contagens por contagemLimpa, trava por travaOuNull.
+const REDEEM_BOOL = ['centro', 'detalhe', 'lista', 'unico', 'novo', 'visivel', 'texto', 'atributo'];
+const REDEEM_BOTAO_BOOL = ['palavraRedeem', 'palavraResgatar', 'numeroInicio', 'numeroFim', 'desab', 'temDts', 'temAlvo', 'temAria'];
+const REDEEM_BOTAO_NUM = ['numerosQtd', 'palavras', 'letras', 'tamanho', 'folhas'];
+const REDEEM_DESC_BOOL = ['digito', 'pontaDigito', 'falaCusto'];
+const REDEEM_DESC_NUM = ['n', 'tamanho', 'palavras'];
+const VIAS_PAGINA = ['texto', 'dedicado'];
+
+function limparRedeem(raw) {
+  const o = objetoOuNull(raw);
+  if (!o) return null;
+  const bt = objetoOuNull(o.botao) || {};
+  const ds = objetoOuNull(o.desc) || {};
+  const out = { trava: travaOuNull(o.trava), comCusto: contagemLimpa(o.comCusto), botao: {}, desc: {} };
+  for (const k of REDEEM_BOOL) out[k] = o[k] === true;
+  for (const k of REDEEM_BOTAO_BOOL) out.botao[k] = bt[k] === true;
+  for (const k of REDEEM_BOTAO_NUM) out.botao[k] = contagemLimpa(bt[k]);
+  for (const k of REDEEM_DESC_BOOL) out.desc[k] = ds[k] === true;
+  for (const k of REDEEM_DESC_NUM) out.desc[k] = contagemLimpa(ds[k]);
+  return out;
+}
+
+// Estado depois do clique no Redeem por texto: só booleanos e contagens.
+function limparPosClique(raw) {
+  const o = objetoOuNull(raw);
+  if (!o) return null;
+  const fo = objetoOuNull(o.folhas);
+  return {
+    centro: o.centro === true,
+    botao: o.botao === true,
+    desab: o.desab === true,
+    titulo: o.titulo === true,
+    novos: contagemLimpa(o.novos),
+    folhas: fo
+      ? {
+        total: contagemLimpa(fo.total),
+        titulos: contagemLimpa(fo.titulos),
+        custos: contagemLimpa(fo.custos),
+        resto: contagemLimpa(fo.resto),
+        saldo: fo.saldo === true,
+      }
+      : null,
+  };
+}
+
 function limparResultado(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = raw.id;
   if (!Number.isInteger(id) || id < 1 || id > 1e9) return null;
-  if (raw.estado === 'clicado') return { id, estado: 'clicado', motivo: '' };
+  if (raw.estado === 'clicado') {
+    const via = VIAS_PAGINA.includes(raw.via) ? raw.via : '';
+    if (!via) return { id, estado: 'clicado', motivo: '' };
+    return { id, estado: 'clicado', motivo: '', via, redeem: limparRedeem(raw.redeem), posClique: limparPosClique(raw.posClique) };
+  }
   if (raw.estado !== 'falhou') return null;
   const motivo = MOTIVOS_PAGINA.includes(raw.motivo) ? raw.motivo : 'outro';
   const fase = FASES_PAGINA.includes(raw.fase) ? raw.fase : '';
@@ -349,6 +504,7 @@ function limparResultado(raw) {
     cabecalho: limparCabecalho(raw.cabecalho),
     classes: limparPistas(raw.classes).slice(0, 8),
     cardClicado: limparCardClicado(raw.cardClicado),
+    percurso: limparPercurso(raw.percurso),
   };
 }
 
@@ -372,10 +528,14 @@ module.exports = {
   restanteMs,
   travaSeguranca,
   escolherResgate,
+  bonusAcabou,
   estadoPendente,
   registrarFalha,
   registrarSucesso,
   avaliarGanho,
   limparFatos,
   limparResultado,
+  limparPercurso,
+  limparRedeem,
+  limparPosClique,
 };

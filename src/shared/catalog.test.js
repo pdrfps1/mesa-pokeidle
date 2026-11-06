@@ -164,12 +164,14 @@ describe('bônus Twitch no catálogo', () => {
   it('padrões: automação desligada e preferências globais', () => {
     const cfg = catalog.normalize({});
     for (const bay of cfg.bays) assert.equal(bay.twitchAuto, false);
-    assert.deepEqual(cfg.twitch, { tipos: { xp: true, captura: false, shiny: false }, limiarMin: 5 });
+    assert.deepEqual(cfg.twitch, { tipos: { xp: true, captura: false, shiny: false } });
   });
 
-  it('limiar fora de 2, 5, 10 e 15 volta a 5; xp desligado é preservado', () => {
-    assert.equal(catalog.normalize({ twitch: { limiarMin: 7 } }).twitch.limiarMin, 5);
-    assert.equal(catalog.normalize({ twitch: { limiarMin: 10 } }).twitch.limiarMin, 10);
+  it('limiarMin não existe mais: qualquer valor passa sem lançar e tipos é preservado', () => {
+    for (const limiarMin of [7, 10, 'x']) {
+      const tw = catalog.normalize({ twitch: { limiarMin } }).twitch;
+      assert.equal(Object.prototype.hasOwnProperty.call(tw, 'limiarMin'), false);
+    }
     assert.equal(catalog.normalize({ twitch: { tipos: { xp: false } } }).twitch.tipos.xp, false);
   });
 

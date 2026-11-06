@@ -24,6 +24,8 @@ const SITUACAO_ESPERA = {
   'sem-saldo-lido': 'sem-saldo-lido',
   pausado: 'pausado',
   'sem-recompensa': 'sem-recompensa',
+  'sem-confirmacao': 'sem-confirmacao',
+  'sem-leitura': 'sem-leitura',
 };
 
 function estadoInicial() {
@@ -40,6 +42,7 @@ function estadoInicial() {
     recarregouEm: 0,
     rodandoEm: 0,
     pendente: null,
+    semConfirmacao: {},
     falhas: {},
     ultimo: null,
     ultimoResgateEm: 0,
@@ -111,8 +114,18 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
     if (b.pendente) {
       const e = P.estadoPendente(b.pendente, tw && tw.bonus, t);
       if (e === 'confirmado') {
-        b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'ok', motivo: '' };
+        b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'ok', motivo: b.pendente.via === 'texto' ? 'confirmado' : '' };
         b.falhas = P.registrarSucesso(b.falhas, b.pendente.tipo);
+        b.pendente = null;
+        b.ultimoResgateEm = t;
+      } else if (e === 'expirado' && b.pendente.clicado) {
+        // Clicou e o jogo não confirmou: não conta falha. O tipo fica travado até o bônus subir tarde, o automático
+        // ser desligado, a conta trocar ou o app reiniciar (a trava vive só em memória).
+        const tipo = b.pendente.tipo;
+        b.semConfirmacao[tipo] = { bonusAntes: b.pendente.bonusAntes, em: t };
+        const detalhe = { via: b.pendente.via || '', redeem: b.pendente.redeem || null, posClique: b.pendente.posClique || null };
+        b.ultimo = Object.assign({ tipo, em: t, estado: 'sem-confirmacao', motivo: 'sem-confirmacao', clicou: true }, detalhe);
+        registrar({ baia: i, tipo, motivo: 'sem-confirmacao', clicou: true, detalhe });
         b.pendente = null;
         b.ultimoResgateEm = t;
       } else if (e === 'expirado') {
@@ -122,6 +135,19 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
         b.ultimoResgateEm = t;
       }
     }
+    // Confirmação tardia: o bônus subiu depois do prazo. Destrava o tipo e conta como sucesso.
+    for (const tipo of Object.keys(b.semConfirmacao)) {
+      const sc = b.semConfirmacao[tipo];
+      if (tw && tw.bonus && (tw.bonus[tipo] || 0) > sc.bonusAntes) {
+        delete b.semConfirmacao[tipo];
+        b.falhas = P.registrarSucesso(b.falhas, tipo);
+        b.ultimo = { tipo, em: t, estado: 'ok', motivo: '' };
+        registrar({ baia: i, tipo, motivo: 'confirmado-tardio', clicou: true });
+      }
+    }
+
+    // Automático desligado solta a trava de confirmação pendente.
+    if (!p.auto[i]) b.semConfirmacao = {};
 
     // 1. pré-requisitos; sem eles, fecha só a janela que NÃO é do usuário
     let motivo = !p.auto[i] ? 'desligado' : !b.jogo.ativo ? 'sem-jogo' : !tw ? 'sem-bloco' : !b.loginTwitch ? 'sem-login' : '';
@@ -232,13 +258,14 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
     const bonus = tw.bonus || {};
     const esc = P.escolherResgate({
       tipos: P.TIPOS.filter((k) => p.tipos[k]),
-      limiarMin: p.limiarMin,
       bonus,
       agoraServidor: t + (b.jogo.offsetMs || 0),
       saldo,
       recompensas: tw.recompensas,
       falhas: b.falhas,
       agora: t,
+      travados: Object.keys(b.semConfirmacao),
+      leituraOk: tw.bonusLido === true && tw.relogioLido === true,
     });
     if (esc.espera) {
       b.situacao = SITUACAO_ESPERA[esc.espera];
@@ -349,6 +376,7 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
       if (b.ultimoLoginValido && b.ultimoLoginValido !== nova) {
         b.pendente = null;
         b.falhas = {};
+        b.semConfirmacao = {};
       }
       b.ultimoLoginValido = nova;
       b.loginTwitch = nova;
@@ -364,14 +392,25 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, botoesCentro, totalBotoesCentro, cabecalho, classes, cardClicado = null }) {
+  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, botoesCentro, totalBotoesCentro, cabecalho, classes, cardClicado = null, percurso = null, via = '', redeem = null, posClique = null }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
       b.pendente.clicado = true;
+      if (via === 'texto' || via === 'dedicado') b.pendente.via = via;
+      if (via === 'texto' && posClique && typeof posClique === 'object') {
+        b.pendente.redeem = redeem && typeof redeem === 'object' ? redeem : null;
+        b.pendente.posClique = posClique;
+        b.ultimo = { tipo: b.pendente.tipo, em: agora(), estado: 'clicado', motivo: 'clicado-texto', clicou: true, via: 'texto', redeem: b.pendente.redeem, posClique };
+      }
       return;
     }
     if (estado === 'falhou') {
+      if (b.pendente.clicado) {
+        // Depois do clique a falha não derruba o pendente: o jogo ainda pode confirmar.
+        registrar({ baia: i, tipo: b.pendente.tipo, motivo: 'falha-depois-do-clique', clicou: true, detalhe: { motivo: typeof motivo === 'string' ? motivo : '' } });
+        return;
+      }
       const t = agora();
       b.ultimo = {
         tipo: b.pendente.tipo,
@@ -391,6 +430,7 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
         cabecalho: cabecalho && typeof cabecalho === 'object' ? cabecalho : null,
         classes: Array.isArray(classes) ? classes : [],
         cardClicado: cardClicado && typeof cardClicado === 'object' ? cardClicado : null,
+        percurso: percurso && typeof percurso === 'object' ? percurso : null,
       };
       const u = b.ultimo;
       registrar({
@@ -405,8 +445,11 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
           pistas: u.pistas,
           dialogos: u.dialogos,
           botoesCentro: u.botoesCentro,
+          totalBotoesCentro: u.totalBotoesCentro,
           cabecalho: u.cabecalho,
           classes: u.classes,
+          cardClicado: u.cardClicado,
+          percurso: u.percurso,
         },
       });
       contarFalha(b, i, b.pendente.tipo, t);
@@ -442,6 +485,7 @@ function createTwitchController({ janelas, prefs, agora, onChange, registrarErro
 
   function sair(i) {
     const b = bays[i];
+    if (b.pendente && b.pendente.clicado) b.semConfirmacao[b.pendente.tipo] = { bonusAntes: b.pendente.bonusAntes, em: agora() };
     b.visivelUsuario = false;
     b.pendente = null;
     janelas.fechar(i);

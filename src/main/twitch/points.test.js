@@ -124,7 +124,7 @@ describe('escolherResgate', () => {
   const agoraServidor = 1000000;
   const base = (extra = {}) => ({
     tipos: ['xp'],
-    limiarMin: 5,
+    leituraOk: true,
     bonus: { xp: 0, captura: 0, shiny: 0 },
     agoraServidor,
     saldo: P.parsePontos('450'),
@@ -138,17 +138,33 @@ describe('escolherResgate', () => {
     assert.deepEqual(P.escolherResgate(base({ tipos: [] })), { espera: 'sem-tipos' });
   });
 
-  it('bônus com 30 min não resgata; exatamente 5 min também não; 4:59 resgata', () => {
-    const meiaHora = { xp: agoraServidor + 30 * 60000 };
-    assert.deepEqual(P.escolherResgate(base({ bonus: meiaHora })), { espera: 'em-dia' });
-    const cincoMin = { xp: agoraServidor + 5 * 60000 };
-    assert.deepEqual(P.escolherResgate(base({ bonus: cincoMin })), { espera: 'em-dia' });
-    const quatroE59 = { xp: agoraServidor + 4 * 60000 + 59000 };
-    assert.equal(P.escolherResgate(base({ bonus: quatroE59 })).tipo, 'xp');
+  it('1 s restante não resgata; prazo exatamente agora resgata; prazo no passado resgata', () => {
+    assert.deepEqual(P.escolherResgate(base({ bonus: { xp: agoraServidor + 1000 } })), { espera: 'em-dia' });
+    assert.equal(P.escolherResgate(base({ bonus: { xp: agoraServidor } })).tipo, 'xp');
+    assert.equal(P.escolherResgate(base({ bonus: { xp: agoraServidor - 60000 } })).tipo, 'xp');
   });
 
-  it('bônus inativo resgata', () => {
+  it('zerado resgata (o jogo mandou zero e o prazo já passou)', () => {
     assert.deepEqual(P.escolherResgate(base()), { tipo: 'xp', titulo: 'Bônus XP', custo: 300 });
+  });
+
+  it('sem leitura válida do bônus ou do relógio dá sem-leitura, mesmo com bônus zero', () => {
+    assert.deepEqual(P.escolherResgate(base({ leituraOk: false })), { espera: 'sem-leitura' });
+    const semFlag = base();
+    delete semFlag.leituraOk;
+    assert.deepEqual(P.escolherResgate(semFlag), { espera: 'sem-leitura' });
+  });
+
+  it('agoraServidor NaN não resgata', () => {
+    assert.deepEqual(P.escolherResgate(base({ agoraServidor: NaN, agora: NaN })), { espera: 'em-dia' });
+  });
+
+  it('bonus vazio não devolve tipo: chave ausente não é prazo passado', () => {
+    assert.deepEqual(P.escolherResgate(base({ bonus: {} })), { espera: 'em-dia' });
+  });
+
+  it('limiarMin passado junto não muda nada: com 1 min restante não resgata', () => {
+    assert.deepEqual(P.escolherResgate(base({ limiarMin: 15, bonus: { xp: agoraServidor + 60000 } })), { espera: 'em-dia' });
   });
 
   it('sem saldo lido, saldo insuficiente e saldo abreviado', () => {
@@ -169,23 +185,20 @@ describe('escolherResgate', () => {
     assert.deepEqual(P.escolherResgate(base({ falhas })), { espera: 'pausado' });
   });
 
-  it('entre vários, o de menor restante vem primeiro; empate vai pela ordem de tipos', () => {
-    const bonus = { xp: agoraServidor + 60000, captura: 0, shiny: 0 };
+  it('dois tipos acabados empatam: vale a ordem de tipos (xp antes de captura)', () => {
     const recompensas = [
       { tipo: 'xp', titulo: 'XP', custo: 300 },
       { tipo: 'captura', titulo: 'Captura', custo: 300 },
     ];
-    assert.equal(P.escolherResgate(base({ tipos: ['xp', 'captura'], bonus, recompensas })).tipo, 'captura');
     assert.equal(P.escolherResgate(base({ tipos: ['xp', 'captura'], recompensas })).tipo, 'xp');
   });
 
-  it('o primeiro sem saldo cede ao segundo que tem saldo', () => {
-    const bonus = { xp: agoraServidor + 60000, captura: 0, shiny: 0 };
+  it('o primeiro sem saldo cede ao segundo que tem saldo (xp custo 500, captura custo 300, saldo 450)', () => {
     const recompensas = [
-      { tipo: 'captura', titulo: 'Captura', custo: 500 },
-      { tipo: 'xp', titulo: 'XP', custo: 300 },
+      { tipo: 'xp', titulo: 'XP', custo: 500 },
+      { tipo: 'captura', titulo: 'Captura', custo: 300 },
     ];
-    assert.equal(P.escolherResgate(base({ tipos: ['xp', 'captura'], bonus, recompensas })).tipo, 'xp');
+    assert.equal(P.escolherResgate(base({ tipos: ['xp', 'captura'], recompensas })).tipo, 'captura');
   });
 });
 
@@ -309,7 +322,7 @@ describe('limparFatos e limparResultado', () => {
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
     // trava: '' entrou no resultado de falha (campo novo); cardClicado: null também (campo novo); o resto do formato não muda.
-    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], botoesCentro: [], totalBotoesCentro: 0, cabecalho: null, classes: [], cardClicado: null };
+    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], botoesCentro: [], totalBotoesCentro: 0, cabecalho: null, classes: [], cardClicado: null, percurso: null };
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
@@ -489,5 +502,173 @@ describe('limparFatos e limparResultado', () => {
     assert.equal(r.vistos[0], 'AB');
     assert.equal(r.vistos[1], 'x'.repeat(45));
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', vistos: 'nao' }).vistos, []);
+  });
+});
+
+describe('limparPercurso: lista branca do diagnóstico do resgate', () => {
+  const nivel = { no: 'section', botoes: 1, titulo: false, resumo: false, dialogo: false };
+  const candidato = { dts: 'RewardCard12', alvo: 'reward-3', aria: 'Canal 2', no: 'div', anc: [nivel, nivel, nivel, nivel], novo: true, desab: false, trava: 'texto livre' };
+  const bruto = {
+    caminho: 'custo',
+    clique: { tag: 'button', role: 'button', emBotao: true, extra: 'x' },
+    rejeitado: { tag: 'span', role: '', emBotao: false, custo: 1, visivel: 1 },
+    lista: { cards: -3, comCusto: 2 },
+    pos: { centro: true, titulo: false, cardPresente: true, filtros: false, novos: 5000 },
+    folhas: { total: 5, titulos: 1, custos: 2, resto: 2, saldo: true },
+    escopo: { no: 'div.x', botoes: 2, trava: 'custo' },
+    candidatos: [candidato, candidato, candidato, candidato],
+    foraDoCentro: 2,
+  };
+
+  it('caminho fora da lista fechada vira vazio; titulo e custo passam', () => {
+    assert.equal(P.limparPercurso({ caminho: 'outro' }).caminho, '');
+    assert.equal(P.limparPercurso({ caminho: 'titulo' }).caminho, 'titulo');
+    assert.equal(P.limparPercurso({ caminho: 'custo' }).caminho, 'custo');
+  });
+
+  it('strings passam por textoCurto: dígito vira #, controle sai, até 40 caracteres', () => {
+    const p = P.limparPercurso({ clique: { tag: 'sp4n\u0007', role: 'x'.repeat(60), emBotao: true } });
+    assert.equal(p.clique.tag, 'sp#n');
+    assert.equal(p.clique.role.length, 40);
+  });
+
+  it('booleanos são estritos: 1 e texto viram false; clique e rejeitado mantêm só as chaves fixas', () => {
+    const p = P.limparPercurso(bruto);
+    assert.deepEqual(p.clique, { tag: 'button', role: 'button', emBotao: true });
+    assert.deepEqual(p.rejeitado, { tag: 'span', role: '', emBotao: false, custo: false, visivel: false });
+    assert.equal(P.limparPercurso({ folhas: { saldo: 'sim' } }).folhas.saldo, false);
+  });
+
+  it('contagens por contagemLimpa: negativo vira 0, acima de 999 vira 999, texto vira 0', () => {
+    const p = P.limparPercurso(bruto);
+    assert.equal(p.lista.cards, 0);
+    assert.equal(p.lista.comCusto, 2);
+    assert.equal(p.pos.novos, 999);
+    assert.equal(P.limparPercurso({ foraDoCentro: '3' }).foraDoCentro, 0);
+  });
+
+  it('trava fora de TRAVAS_PAGINA vira null; ok e trava da lista passam', () => {
+    const p = P.limparPercurso(bruto);
+    assert.equal(p.candidatos[0].trava, null);
+    assert.equal(p.escopo.trava, 'custo');
+    assert.equal(P.limparPercurso({ escopo: { trava: 'ok' } }).escopo.trava, 'ok');
+  });
+
+  it('no máximo 3 candidatos e 3 ancestrais por candidato', () => {
+    const p = P.limparPercurso(bruto);
+    assert.equal(p.candidatos.length, 3);
+    assert.equal(p.candidatos[0].anc.length, 3);
+    assert.equal(p.candidatos[0].novo, true);
+  });
+
+  it('ausente ou não-objeto vira null; dentro do percurso, campo ausente vira null', () => {
+    assert.equal(P.limparPercurso(undefined), null);
+    assert.equal(P.limparPercurso('x'), null);
+    const p = P.limparPercurso({});
+    assert.equal(p.clique, null);
+    assert.equal(p.rejeitado, null);
+    assert.equal(p.lista, null);
+    assert.equal(p.pos, null);
+    assert.equal(p.folhas, null);
+    assert.equal(p.escopo, null);
+    assert.deepEqual(p.candidatos, []);
+    assert.equal(p.foraDoCentro, 0);
+  });
+
+  it('limparResultado leva o percurso na falha; no clicado a chave não existe', () => {
+    const falha = P.limparResultado({ id: 9, estado: 'falhou', motivo: 'sem-botao', percurso: { caminho: 'titulo' } });
+    assert.equal(falha.percurso.caminho, 'titulo');
+    const ok = P.limparResultado({ id: 9, estado: 'clicado', percurso: { caminho: 'titulo' } });
+    assert.equal(Object.prototype.hasOwnProperty.call(ok, 'percurso'), false);
+  });
+});
+
+describe('limparPercurso: array não é objeto e bloqueio na lista fechada (rodada 1)', () => {
+  it('rejeitado, clique, lista e pos que são arrays viram null', () => {
+    const p = P.limparPercurso({ rejeitado: [], clique: [], lista: [], pos: [], folhas: [], escopo: [] });
+    assert.equal(p.rejeitado, null);
+    assert.equal(p.clique, null);
+    assert.equal(p.lista, null);
+    assert.equal(p.pos, null);
+    assert.equal(p.folhas, null);
+    assert.equal(p.escopo, null);
+  });
+
+  it('bloqueio: dedicado e titulo-visivel passam; outro valor vira vazio', () => {
+    assert.equal(P.limparPercurso({ bloqueio: 'dedicado' }).bloqueio, 'dedicado');
+    assert.equal(P.limparPercurso({ bloqueio: 'titulo-visivel' }).bloqueio, 'titulo-visivel');
+    assert.equal(P.limparPercurso({ bloqueio: 'outro' }).bloqueio, '');
+    assert.equal(P.limparPercurso({}).bloqueio, '');
+  });
+});
+
+describe('Redeem por texto e posClique: lista branca, travas e escolha travada (rodada redeem)', () => {
+  it('limparRedeem: booleanos estritos, contagens, trava na lista fechada; texto livre some', () => {
+    const r = P.limparRedeem({
+      trava: 'redeem-texto', centro: 1, detalhe: true, lista: 'sim', unico: true, novo: true, visivel: true, texto: true, atributo: false,
+      comCusto: 2, botao: { palavraRedeem: true, numerosQtd: 1, tamanho: 9, desab: 'x', temDts: true, texto: 'NAO PODE' }, desc: { n: 1, tamanho: 4, digito: true, falaCusto: false, frase: 'segredo' },
+    });
+    assert.equal(r.trava, 'redeem-texto');
+    assert.equal(r.centro, false);
+    assert.equal(r.detalhe, true);
+    assert.equal(r.lista, false);
+    assert.equal(r.botao.palavraRedeem, true);
+    assert.equal(r.botao.desab, false);
+    assert.equal(r.botao.numerosQtd, 1);
+    assert.equal(r.desc.n, 1);
+    assert.equal(r.desc.digito, true);
+    assert.equal(JSON.stringify(r).includes('segredo'), false);
+    assert.equal(JSON.stringify(r).includes('NAO PODE'), false);
+  });
+
+  it('limparRedeem: trava fora da lista vira null; lixo vira null', () => {
+    assert.equal(P.limparRedeem({ trava: 'texto livre da página' }).trava, null);
+    assert.equal(P.limparRedeem({ trava: 'redeem-varios' }).trava, 'redeem-varios');
+    assert.equal(P.limparRedeem('x'), null);
+    assert.equal(P.limparRedeem([]), null);
+    assert.equal(P.limparRedeem({ comCusto: '3' }).comCusto, 0);
+  });
+
+  it('limparPosClique: só booleanos e contagens; lixo vira null', () => {
+    const p = P.limparPosClique({ centro: true, botao: 1, desab: true, titulo: true, novos: 4, folhas: { total: 3, saldo: true, texto: 'x' }, texto: 'vaza' });
+    assert.deepEqual(p, { centro: true, botao: false, desab: true, titulo: true, novos: 4, folhas: { total: 3, titulos: 0, custos: 0, resto: 0, saldo: true } });
+    assert.equal(P.limparPosClique(null), null);
+    assert.equal(P.limparPosClique(['x']), null);
+  });
+
+  it('limparResultado clicado com via texto leva o diagnóstico; via inválida é omitida', () => {
+    const ok = P.limparResultado({ id: 3, estado: 'clicado', motivo: '', via: 'texto', redeem: { trava: '' }, posClique: { centro: true } });
+    assert.equal(ok.via, 'texto');
+    assert.equal(ok.redeem.trava, null);
+    assert.equal(ok.posClique.centro, true);
+    assert.deepEqual(P.limparResultado({ id: 3, estado: 'clicado', motivo: '', via: 'outra' }), { id: 3, estado: 'clicado', motivo: '' });
+  });
+
+  it('as travas do Redeem por texto são aceitas na lista fechada do percurso', () => {
+    for (const t of ['redeem-centro', 'redeem-detalhe', 'redeem-lista', 'redeem-nenhum', 'redeem-varios', 'redeem-velho', 'redeem-oculto', 'redeem-texto', 'redeem-atributo']) {
+      assert.equal(P.limparPercurso({ escopo: { trava: t } }).escopo.trava, t);
+    }
+  });
+
+  it('percurso leva redeem só quando a página mandou um objeto', () => {
+    assert.equal(Object.prototype.hasOwnProperty.call(P.limparPercurso({}), 'redeem'), false);
+    assert.equal(P.limparPercurso({ redeem: { trava: 'redeem-lista' } }).redeem.trava, 'redeem-lista');
+  });
+
+  it('escolherResgate: tipo travado não resgata de novo; outro tipo segue', () => {
+    const base = { tipos: ['xp', 'captura'], leituraOk: true, bonus: { xp: 0, captura: 0 }, agoraServidor: 1000, saldo: { minimo: 9999 }, falhas: {}, agora: 1000 };
+    const recompensas = [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 300 }];
+    assert.deepEqual(P.escolherResgate({ ...base, recompensas, travados: ['xp', 'captura'] }), { espera: 'sem-confirmacao' });
+    const outro = P.escolherResgate({ ...base, saldo: { minimo: 9999 }, recompensas, travados: ['xp'] });
+    assert.equal(outro.tipo, 'captura');
+  });
+});
+
+describe('limparResultado: via dedicado no aviso de clique (rodada redeem 1)', () => {
+  it('clicado com via dedicado passa a via; o resto do aviso segue vazio', () => {
+    const r = P.limparResultado({ id: 3, estado: 'clicado', motivo: '', via: 'dedicado' });
+    assert.equal(r.via, 'dedicado');
+    assert.equal(r.redeem, null);
+    assert.equal(r.posClique, null);
   });
 });

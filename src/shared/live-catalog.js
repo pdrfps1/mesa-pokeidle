@@ -5,7 +5,7 @@ const LOGIN_RE = /^[A-Za-z0-9_]{1,25}$/;
 const MAX_LIST = 100;
 const MAX_STR = 80;
 const LIVE_TIPOS = ['xp', 'captura', 'shiny'];
-const TWITCH_KEYS = ['vinculado', 'login', 'bonus', 'pct', 'minutos', 'recompensas', 'pacotes', 'oficiais'];
+const TWITCH_KEYS = ['vinculado', 'login', 'pct', 'minutos', 'recompensas', 'pacotes', 'oficiais'];
 
 function isValidTwitchLogin(login) {
   return typeof login === 'string' && LOGIN_RE.test(login);
@@ -79,12 +79,18 @@ function copyPacoteLive(raw) {
   return raw;
 }
 
+// Bônus do jogo: só as chaves presentes, sem preencher zeros. Objeto inválido, array ou valor que não é inteiro >= 0 = null.
+// Idempotente: rodar de novo sobre o resultado devolve o mesmo.
 function copyBonusLive(raw) {
-  const out = { xp: 0, captura: 0, shiny: 0 };
-  if (!raw || typeof raw !== 'object') return out;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out = {};
   for (const key of LIVE_TIPOS) {
-    if (Number.isInteger(raw[key]) && raw[key] >= 0) out[key] = raw[key];
+    if (!has(raw, key)) continue;
+    if (!Number.isInteger(raw[key]) || raw[key] < 0) return null;
+    out[key] = raw[key];
   }
+  // Tem chaves, mas nenhuma é de LIVE_TIPOS (jogo renomeou): não é leitura válida. {} segue válido.
+  if (Object.keys(raw).length > 0 && Object.keys(out).length === 0) return null;
   return out;
 }
 
@@ -94,6 +100,8 @@ function emptyTwitchLive() {
     vinculado: undefined,
     login: '',
     bonus: { xp: 0, captura: 0, shiny: 0 },
+    bonusLido: false,
+    relogioLido: false,
     pct: 0,
     minutos: 60,
     recompensas: [],
@@ -121,7 +129,10 @@ function sanitizeTwitchPart(src) {
     const login = trimStr(src.login);
     tw.login = isValidTwitchLogin(login) ? login : '';
   }
-  if (has(src, 'bonus')) tw.bonus = copyBonusLive(src.bonus);
+  if (has(src, 'bonus')) {
+    const bonus = copyBonusLive(src.bonus);
+    if (bonus !== null) tw.bonus = bonus;
+  }
   if (has(src, 'pct')) {
     const pct = finiteNum(src.pct);
     if (pct != null && pct >= 0 && pct <= 500) tw.pct = pct;
@@ -193,6 +204,12 @@ function applyBayPatch(bay, patch, agora) {
       for (const key of TWITCH_KEYS) {
         if (has(patch.twitch, key)) tw[key] = patch.twitch[key];
       }
+      // Bônus: mescla por chave (ausente mantém o valor anterior). Só vale como leitura o frame completo, onde chave
+      // ausente quer dizer "sem bônus", ou o que traz todos os tipos. Frame parcial não prova que o outro tipo acabou.
+      if (has(patch.twitch, 'bonus')) {
+        tw.bonus = Object.assign({}, tw.bonus, patch.twitch.bonus);
+        if (patch.completo === true || LIVE_TIPOS.every((tipo) => has(patch.twitch.bonus, tipo))) tw.bonusLido = true;
+      }
       tw.recebido = true;
       next.twitch = tw;
     }
@@ -207,6 +224,8 @@ function applyBayPatch(bay, patch, agora) {
   }
   if (Number.isInteger(patch.servidorAgora) && Number.isFinite(agora)) {
     next.offsetMs = patch.servidorAgora - agora;
+    next.twitch = next.twitch || emptyTwitchLive();
+    next.twitch.relogioLido = true;
   }
   return next;
 }

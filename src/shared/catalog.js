@@ -3,7 +3,6 @@ var MESA_CATALOG = {
   bays: 4,
   partitions: ['persist:mesa-1', 'persist:mesa-2', 'persist:mesa-3', 'persist:mesa-4'],
   twitchPartitions: ['persist:mesa-twitch-1', 'persist:mesa-twitch-2', 'persist:mesa-twitch-3', 'persist:mesa-twitch-4'],
-  twitchLimiares: [2, 5, 10, 15],
   autos: [
     { id: 'auto-ball-captura', label: 'Lançar até capturar', vip: true },
     { id: 'auto-ball-sem-parar', label: 'Lançar sem parar', vip: true },
@@ -39,14 +38,12 @@ var MESA_CATALOG = {
   },
 };
 
-// Preferências globais do bônus Twitch: tipos de recompensa e limiar de resgate, em minutos.
+// Preferências globais do bônus Twitch: só os tipos de recompensa. O resgate segue o prazo que o jogo manda (sem limiar).
 function mesaTwitchPrefs(raw) {
   const d = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
   const t = d.tipos && typeof d.tipos === 'object' ? d.tipos : {};
-  const limiar = Number(d.limiarMin);
   return {
     tipos: { xp: t.xp !== false, captura: t.captura === true, shiny: t.shiny === true },
-    limiarMin: MESA_CATALOG.twitchLimiares.includes(limiar) ? limiar : 5,
   };
 }
 

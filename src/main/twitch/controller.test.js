@@ -43,13 +43,13 @@ function montar() {
   const janelas = fakeJanelas();
   const ctx = {
     janelas,
-    estado: { t: 1000000, auto: [true, false, false, false], tipos: { xp: true, captura: false, shiny: false }, limiarMin: 5 },
+    estado: { t: 1000000, auto: [true, false, false, false], tipos: { xp: true, captura: false, shiny: false } },
     mudancas: 0,
     registrados: [],
   };
   ctx.c = createTwitchController({
     janelas,
-    prefs: () => ({ tipos: ctx.estado.tipos, limiarMin: ctx.estado.limiarMin, auto: ctx.estado.auto }),
+    prefs: () => ({ tipos: ctx.estado.tipos, auto: ctx.estado.auto }),
     agora: () => ctx.estado.t,
     onChange: () => { ctx.mudancas += 1; },
     // Mesma conversão do log real (pausado vira ISO), para o teste ler o que de fato seria gravado.
@@ -62,6 +62,8 @@ function bloco(extra) {
   return Object.assign({
     vinculado: true,
     login: 'fulano',
+    bonusLido: true,
+    relogioLido: true,
     bonus: { xp: 0, captura: 0, shiny: 0 },
     pct: 15,
     minutos: 60,
@@ -694,5 +696,344 @@ describe('log de erros do resgate', () => {
       assert.equal(Object.prototype.hasOwnProperty.call(e, 'pausado') ? e.pausado : null, null);
     }
     assert.equal(ctx.registrados.some((r) => typeof r.pausado === 'string' && r.pausado.includes('Invalid')), false);
+  });
+});
+
+describe('controller: percurso e card clicado no registro do resgate', () => {
+  it('percurso, cardClicado e totalBotoesCentro vão para o último resgate e para o detalhe do registro', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    const percurso = { caminho: 'custo', clique: { tag: 'button', role: '', emBotao: true }, rejeitado: null, lista: null, pos: null, folhas: null, escopo: null, candidatos: [], foraDoCentro: 0 };
+    const cardClicado = { dts: 'RewardCard#', alvo: '', aria: '', custo: true, desab: false };
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-recompensa', percurso, cardClicado, totalBotoesCentro: 4 });
+    const u = ctx.c.snapshot().bays[0].ultimo;
+    assert.deepEqual(u.percurso, percurso);
+    assert.deepEqual(u.cardClicado, cardClicado);
+    const registro = ctx.registrados.find((e) => e.motivo === 'sem-recompensa');
+    assert.ok(registro, 'falha deveria gravar uma linha');
+    assert.deepEqual(registro.detalhe.percurso, percurso);
+    assert.deepEqual(registro.detalhe.cardClicado, cardClicado);
+    assert.equal(registro.detalhe.totalBotoesCentro, 4);
+  });
+
+  it('sem percurso no resultado, o último resgate traz null', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-recompensa' });
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.percurso, null);
+  });
+});
+
+describe('controller: trava contra gasto duplo (clique sem confirmação)', () => {
+  const POS = { centro: true, botao: false, desab: false, titulo: true, novos: 0, folhas: null };
+
+  // Clique feito pelo texto: a página manda o aviso antes do clique e o resultado depois.
+  function clicadoTexto(ctx, id) {
+    ctx.c.resultado(0, { id, estado: 'clicado', motivo: '' });
+    ctx.c.resultado(0, { id, estado: 'clicado', motivo: '', via: 'texto', redeem: { trava: '' }, posClique: POS });
+  }
+
+  function primeiroId(ctx) {
+    return resgates(ctx)[0][2].id;
+  }
+
+  it('clicado + expiração não reenvia em 2 h simuladas; situação sem-confirmacao', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 1);
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 7200000, {});
+    assert.equal(resgates(ctx).length, 1);
+    const snap = ctx.c.snapshot().bays[0];
+    assert.equal(snap.situacao, 'sem-confirmacao');
+    assert.equal(snap.ultimo.estado, 'sem-confirmacao');
+    assert.equal(snap.ultimo.clicou, true);
+  });
+
+  it('expiração com clique não conta falha: três ciclos clicado+expiração não pausam a baía', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    for (let k = 0; k < 3; k += 1) {
+      clicadoTexto(ctx, resgates(ctx)[k][2].id);
+      correr(ctx, 200000, {});
+      // Automático desligado e ligado solta a trava: o próximo resgate sai sem esperar backoff de falha.
+      ctx.estado.auto[0] = false;
+      correr(ctx, TICK_MS, {});
+      ctx.estado.auto[0] = true;
+      correr(ctx, 60000, {});
+    }
+    assert.ok(resgates(ctx).length >= 3, 'três ciclos de resgate');
+    assert.equal(ctx.registrados.some((e) => e.tipo === 'pausa'), false);
+    assert.notEqual(ctx.c.snapshot().bays[0].situacao, 'pausado');
+  });
+
+  it('log de sem-confirmacao presente, com via e posClique no detalhe', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 200000, {});
+    const e = ctx.registrados.find((r) => r.motivo === 'sem-confirmacao');
+    assert.ok(e, 'linha de sem-confirmacao');
+    assert.equal(e.clicou, true);
+    assert.equal(e.detalhe.via, 'texto');
+    assert.ok(e.detalhe.posClique);
+  });
+
+  it('clicado com posClique grava motivo clicado-texto', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.motivo, 'clicado-texto');
+  });
+
+  it('confirmado com via texto grava motivo confirmado', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    ctx.c.setJogo(0, { ativo: true, twitch: bloco({ bonus: { xp: ctx.estado.t + 3600000, captura: 0, shiny: 0 } }), offsetMs: 0 });
+    correr(ctx, TICK_MS, {});
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.motivo, 'confirmado');
+  });
+
+  it('bônus tardio destrava: confirmado-tardio e último resultado ok', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 200000, {});
+    ctx.c.setJogo(0, { ativo: true, twitch: bloco({ bonus: { xp: ctx.estado.t + 3600000, captura: 0, shiny: 0 } }), offsetMs: 0 });
+    correr(ctx, TICK_MS, {});
+    assert.ok(ctx.registrados.some((e) => e.motivo === 'confirmado-tardio'));
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.estado, 'ok');
+  });
+
+  it('automático desligado solta a trava: depois de religar, resgata de novo', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 200000, {});
+    assert.equal(resgates(ctx).length, 1);
+    ctx.estado.auto[0] = false;
+    correr(ctx, TICK_MS, {});
+    ctx.estado.auto[0] = true;
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 2);
+  });
+
+  it('falha depois do clique é ignorada: sem ultimo de falha, pendente segue e o log registra falha-depois-do-clique', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    const id = primeiroId(ctx);
+    clicadoTexto(ctx, id);
+    ctx.c.resultado(0, { id, estado: 'falhou', motivo: 'indisponivel' });
+    const snap = ctx.c.snapshot().bays[0];
+    assert.notEqual(snap.ultimo && snap.ultimo.estado, 'falhou');
+    assert.equal(snap.situacao, 'resgatando');
+    assert.ok(ctx.registrados.some((e) => e.motivo === 'falha-depois-do-clique'));
+  });
+
+  it('troca de conta limpa a trava: depois de voltar à conta, resgata de novo', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 200000, {});
+    ctx.c.setLoginTwitch(0, 'outra');
+    ctx.c.setLoginTwitch(0, 'fulano');
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 2);
+  });
+
+  it('sair com clique sem confirmação converte em trava: ao entrar de novo, não resgata', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    ctx.c.sair(0);
+    ctx.c.setLoginTwitch(0, 'fulano');
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 1);
+    assert.equal(ctx.c.snapshot().bays[0].situacao, 'sem-confirmacao');
+  });
+
+  it('outro tipo segue resgatando enquanto um está travado', () => {
+    const ctx = montar();
+    ctx.estado.tipos.captura = true;
+    abrir(ctx, { blocoExtra: { recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 300 }] } });
+    correr(ctx, TICK_MS, {});
+    clicadoTexto(ctx, primeiroId(ctx));
+    correr(ctx, 200000, {});
+    const titulos = resgates(ctx).map((e) => e[2].titulo);
+    assert.equal(titulos[0], 'Bônus XP');
+    assert.ok(titulos.includes('Captura'), 'captura deveria resgatar: ' + titulos.join(','));
+    assert.equal(titulos.filter((x) => x === 'Bônus XP').length, 1);
+  });
+
+  it('sem clique, a expiração segue o backoff atual e volta a resgatar', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 200000, {});
+    correr(ctx, 7200000, {});
+    assert.ok(resgates(ctx).length > 1);
+  });
+});
+
+describe('controller: aviso do clique dedicado (via dedicado)', () => {
+  function clicadoDedicado(ctx, id) {
+    ctx.c.resultado(0, { id, estado: 'clicado', motivo: '', via: 'dedicado' });
+  }
+
+  it('falha depois do clique dedicado não reenvia em 2 h e registra falha-depois-do-clique', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    const id = resgates(ctx)[0][2].id;
+    clicadoDedicado(ctx, id);
+    ctx.c.resultado(0, { id, estado: 'falhou', motivo: 'indisponivel' });
+    correr(ctx, 7200000, {});
+    assert.equal(resgates(ctx).length, 1);
+    assert.ok(ctx.registrados.some((e) => e.motivo === 'falha-depois-do-clique'));
+  });
+
+  it('sair no meio do clique dedicado cria trava: ao entrar de novo não resgata', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    clicadoDedicado(ctx, resgates(ctx)[0][2].id);
+    ctx.c.sair(0);
+    ctx.c.setLoginTwitch(0, 'fulano');
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 1);
+    assert.equal(ctx.c.snapshot().bays[0].situacao, 'sem-confirmacao');
+  });
+});
+
+describe('controller: frame real com só xp (rodada prazo)', () => {
+  const L = require('../../shared/live-catalog');
+
+  // Frame do jogo passa pelo catálogo: só xp no prazo futuro, relógio lido. Completo: chave ausente quer dizer sem bônus.
+  function frameSoXp(ctx, bonus, completo = true) {
+    const patch = L.sanitizeLivePatch({ completo, twitch: Object.assign({ vinculado: true, login: 'fulano' }, bonus ? { bonus } : {}), servidorAgora: ctx.estado.t });
+    const bay = L.applyBayPatch(L.emptyBayLive(), patch, ctx.estado.t);
+    return Object.assign({}, bay.twitch, {
+      recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 300 }],
+      oficiais: bloco().oficiais,
+      pct: 15,
+      minutos: 60,
+    });
+  }
+
+  it('frame completo com bonus { xp: prazo futuro } e relógio lido: captura é resgatada e xp não', () => {
+    const ctx = montar();
+    ctx.estado.tipos.captura = true;
+    ctx.c.setLoginTwitch(0, 'fulano');
+    ctx.c.setJogo(0, { ativo: true, twitch: frameSoXp(ctx, { xp: ctx.estado.t + 3600000 }), offsetMs: 0 });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, TICK_MS, {});
+    const titulos = resgates(ctx).map((e) => e[2].titulo);
+    assert.deepEqual(titulos, ['Captura']);
+  });
+
+  it('frame parcial com bonus { xp: prazo futuro }: captura não é resgatada, sem-leitura', () => {
+    const ctx = montar();
+    ctx.estado.tipos.captura = true;
+    ctx.c.setLoginTwitch(0, 'fulano');
+    ctx.c.setJogo(0, { ativo: true, twitch: frameSoXp(ctx, { xp: ctx.estado.t + 3600000 }, false), offsetMs: 0 });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 0);
+    assert.equal(ctx.c.snapshot().bays[0].situacao, 'sem-leitura');
+  });
+
+  it('frame sem bonus: bonusLido falso e sem-leitura, mesmo com os zeros', () => {
+    const ctx = montar();
+    ctx.c.setLoginTwitch(0, 'fulano');
+    ctx.c.setJogo(0, { ativo: true, twitch: frameSoXp(ctx, null), offsetMs: 0 });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 0);
+    assert.equal(ctx.c.snapshot().bays[0].situacao, 'sem-leitura');
+  });
+});
+
+describe('controller: prazo do bônus e leitura válida (rodada prazo)', () => {
+  function setJogoBloco(ctx, extra, offsetMs = 0) {
+    ctx.c.setJogo(0, { ativo: true, twitch: bloco(extra), offsetMs });
+  }
+
+  it('bonusLido falso: situação sem-leitura, nenhum resgate; depois da leitura resgata', () => {
+    const ctx = montar();
+    preparar(ctx, { blocoExtra: { bonusLido: false } });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 0);
+    assert.equal(ctx.c.snapshot().bays[0].situacao, 'sem-leitura');
+    setJogoBloco(ctx, { bonusLido: true });
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 1);
+  });
+
+  it('relogioLido falso: nenhum resgate; depois da leitura resgata', () => {
+    const ctx = montar();
+    preparar(ctx, { blocoExtra: { relogioLido: false } });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 0);
+    setJogoBloco(ctx, { relogioLido: true });
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 1);
+  });
+
+  it('prefs sem limiar: 1 min restante não resgata', () => {
+    const ctx = montar();
+    preparar(ctx, { blocoExtra: { bonus: { xp: ctx.estado.t + 60000, captura: 0, shiny: 0 } } });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 30000, {});
+    assert.equal(resgates(ctx).length, 0);
+  });
+
+  it('offsetMs negativo: o prazo passou no local mas não no servidor, então não resgata', () => {
+    const ctx = montar();
+    setJogoBloco(ctx, { bonus: { xp: ctx.estado.t - 30000, captura: 0, shiny: 0 } }, -60000);
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 30000, {});
+    assert.equal(resgates(ctx).length, 0);
+  });
+
+  it('1 s restante não resgata; depois do prazo resgata uma vez só', () => {
+    const ctx = montar();
+    preparar(ctx, { blocoExtra: { bonus: { xp: ctx.estado.t + 1000, captura: 0, shiny: 0 } } });
+    correr(ctx, TICK_MS, {});
+    assert.equal(resgates(ctx).length, 0);
+    correr(ctx, 2000, {});
+    assert.equal(resgates(ctx).length, 1);
+    correr(ctx, 60000, {});
+    assert.equal(resgates(ctx).length, 1);
+  });
+
+  it('dois tipos acabados, um por vez: o segundo sai só depois da confirmação do primeiro, com intervalo de 20 s', () => {
+    const ctx = montar();
+    ctx.estado.tipos.captura = true;
+    preparar(ctx, { blocoExtra: { recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 300 }] } });
+    correr(ctx, TICK_MS, {});
+    correr(ctx, TICK_MS, {});
+    assert.deepEqual(resgates(ctx).map((e) => e[2].titulo), ['Bônus XP']);
+    correr(ctx, 5000, {});
+    assert.equal(resgates(ctx).length, 1, 'não resgata o segundo com um pendente aberto');
+    setJogoBloco(ctx, { bonus: { xp: ctx.estado.t + 3600000, captura: 0, shiny: 0 }, recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 300 }] });
+    correr(ctx, TICK_MS, {});
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.estado, 'ok');
+    correr(ctx, 25000, {});
+    assert.deepEqual(resgates(ctx).map((e) => e[2].titulo), ['Bônus XP', 'Captura']);
   });
 });

@@ -48,8 +48,13 @@ const { ipcRenderer } = require('electron');
         return;
       }
       ocupado = true;
-      D.resgatar(document, { titulo: cmd.titulo, custo: cmd.custo }, { esperar: D.esperar, pausa: D.pausa })
-        .then((res) => enviarResultado({ id: cmd.id, estado: res.estado, motivo: res.motivo, trava: res.trava, vistos: res.vistos, fase: res.fase, clicou: res.clicou, pistas: res.pistas, pistasAntes: res.pistasAntes, dialogoAntes: res.dialogoAntes, dialogos: res.dialogos, botoesCentro: res.botoesCentro, totalBotoesCentro: res.totalBotoesCentro, cabecalho: res.cabecalho, classes: res.classes, cardClicado: res.cardClicado }))
+      D.resgatar(document, { titulo: cmd.titulo, custo: cmd.custo }, {
+        esperar: D.esperar,
+        pausa: D.pausa,
+        // Clique feito por texto: avisa na hora, para o controller não reenviar o resgate.
+        aoClicar: (via) => enviarResultado({ id: cmd.id, estado: 'clicado', motivo: '', via }),
+      })
+        .then((res) => enviarResultado({ id: cmd.id, estado: res.estado, motivo: res.motivo, trava: res.trava, vistos: res.vistos, fase: res.fase, clicou: res.clicou, pistas: res.pistas, pistasAntes: res.pistasAntes, dialogoAntes: res.dialogoAntes, dialogos: res.dialogos, botoesCentro: res.botoesCentro, totalBotoesCentro: res.totalBotoesCentro, cabecalho: res.cabecalho, classes: res.classes, cardClicado: res.cardClicado, percurso: res.percurso, via: res.via, redeem: res.redeem, posClique: res.posClique }))
         .catch(() => enviarResultado({ id: cmd.id, estado: 'falhou', motivo: 'outro' }))
         .finally(() => { ocupado = false; });
     }

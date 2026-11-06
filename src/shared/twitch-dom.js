@@ -1,5 +1,7 @@
 var MESA_TWITCH_DOM = (function () {
   // Atributos primeiro (data-a-target, data-test-selector), depois classe, por último aria-label em en e pt.
+  // Redeem sem seletor dedicado: achado pelo texto (acharRedeemPorTexto), a cada poll da confirmação, só com centro de cabeçalho,
+  // detalhe com folha nova do título e sem lista visível. Um único clique. Diagnóstico só com booleanos e contagens.
   // Nenhum seletor foi conferido com login: o motivo de cada falha aparece no painel.
   // user-menu-toggle também aparece deslogado: logado só vale sem login-button nem signup-button.
   // O resumo de pontos (community-points-summary) existe deslogado, com saldo 0: não prova login.
@@ -317,25 +319,50 @@ var MESA_TWITCH_DOM = (function () {
     return lista.filter((c) => !lista.some((outro) => outro !== c && dentroDe(outro, c)));
   }
 
+  // Item achado pelo título só vale se for botão real (button ou role=button).
+  function eBotaoReal(el) {
+    const tag = String(el.tagName || el.tag || '').toLowerCase();
+    return tag === 'button' || atributo(el, 'role') === 'button';
+  }
+
+  // Custo no texto do item, depois de tirar o título: "Bônus +15% XP 300" sem o título sobra " 300".
+  function itemTemCusto(el, alvo, custo) {
+    const semTitulo = normal(textoDe(el)).split(alvo).join(' ');
+    return numerosDe(semTitulo).includes(Number(custo));
+  }
+
   // Igualdade normalizada primeiro, no texto ou no title (A-4). Sem igualdade, contenção com candidatos aninhados
   // reduzidos ao mais interno. Mais de um candidato disjunto: ambigua, e nada é clicado.
-  function buscarRecompensa(doc, titulo, centroDado) {
+  // Com custo, o item só conta se for botão real dentro do centro com o custo no texto (sem o título).
+  // O primeiro candidato recusado volta em rejeitado. Sem custo, a regra é a de antes.
+  function buscarRecompensa(doc, titulo, centroDado, custo) {
     const alvo = normal(titulo);
-    if (!alvo) return { achado: null, ambigua: false };
+    if (!alvo) return { achado: null, ambigua: false, rejeitado: null };
     // Centro passado como null (sumiu): não procura em nada. Sem terceiro argumento, cai no centro
     // específico e, na falta dele, no documento inteiro. Produção sempre passa o centro; o fallback é só da API exportada.
-    if (centroDado === null) return { achado: null, ambigua: false };
+    if (centroDado === null) return { achado: null, ambigua: false, rejeitado: null };
     const raiz = centroDado || primeiro(doc, SELETORES.centro) || doc;
-    const botoes = Array.from(raiz.querySelectorAll('button,[role="button"]'));
+    // Com custo, o botão de confirmação (SELETORES.resgatar) não entra como item. Sem custo, a busca é a de antes.
+    const confirmacaoEl = custo === undefined ? [] : Array.from(raiz.querySelectorAll(SELETORES.resgatar[0]));
+    const botoes = custo === undefined
+      ? Array.from(raiz.querySelectorAll('button,[role="button"]'))
+      : botoesSemConfirmacao(raiz);
     const titulosExatos = Array.from(raiz.querySelectorAll('[title]'))
       .filter((el) => normal(el.getAttribute('title')) === alvo)
       .map(botaoDe)
-      .filter((el) => dentroDe(el, raiz));
-    const iguais = maisInternos([...new Set([...botoes.filter((el) => normal(textoDe(el)) === alvo), ...titulosExatos])]);
-    if (iguais.length) return { achado: iguais.length === 1 ? iguais[0] : null, ambigua: iguais.length > 1 };
-    const parciais = maisInternos(botoes.filter((el) => normal(textoDe(el)).includes(alvo)));
-    if (parciais.length === 1) return { achado: parciais[0], ambigua: false };
-    return { achado: null, ambigua: parciais.length > 1 };
+      .filter((el) => dentroDe(el, raiz) && !confirmacaoEl.includes(el));
+    let rejeitado = null;
+    const aceitos = (lista) => lista.filter((el) => {
+      if (custo === undefined) return true;
+      const ok = eBotaoReal(el) && itemTemCusto(el, alvo, custo);
+      if (!ok && !rejeitado) rejeitado = el;
+      return ok;
+    });
+    const iguais = maisInternos(aceitos([...new Set([...botoes.filter((el) => normal(textoDe(el)) === alvo), ...titulosExatos])]));
+    if (iguais.length) return { achado: iguais.length === 1 ? iguais[0] : null, ambigua: iguais.length > 1, rejeitado };
+    const parciais = maisInternos(aceitos(botoes.filter((el) => normal(textoDe(el)).includes(alvo))));
+    if (parciais.length === 1) return { achado: parciais[0], ambigua: false, rejeitado };
+    return { achado: null, ambigua: parciais.length > 1, rejeitado };
   }
 
   function acharRecompensa(doc, titulo, centroDado) {
@@ -414,24 +441,30 @@ var MESA_TWITCH_DOM = (function () {
     return tamanhoDe(escopo) > lido;
   }
 
-  // Motivo de o escopo não conferir, ou '' se confere. Os motivos são TRAVAS_PAGINA (sem o '').
-  // O escopo mostra uma recompensa só: o título pedido uma vez, inteiro, no máximo um custo, o pedido, e no máximo uma descrição.
-  function motivoEscopo(escopo, dedicado, alvo, custo) {
+  // Classificador das folhas do escopo, sem o botão de confirmação: folhas, as com título, as de custo e o resto.
+  function classificarFolhas(escopo, dedicado, alvo, custo) {
     const texto = (el) => normal(textoDe(el));
     const eTitulo = (el) => texto(el) === alvo
       || (texto(el).startsWith(alvo) && mesmoCusto(texto(el).slice(alvo.length), custo));
     const folhas = folhasDe(escopo, dedicado);
-    if (temTextoSolto(escopo, dedicado, folhas)) return 'texto-solto';
     const titulos = folhas.filter(eTitulo);
-    if (titulos.length !== 1) return 'titulos';
     const outras = folhas.filter((el) => !eTitulo(el) && !NAVEGACAO.test(texto(el)));
     const custos = outras.filter((el) => SO_NUMERO.test(texto(el)));
     const resto = outras.filter((el) => !SO_NUMERO.test(texto(el)));
-    const total = custos.length + (texto(titulos[0]) === alvo ? 0 : 1);
+    return { folhas, titulos, custos, resto, texto };
+  }
+
+  // Motivo de o escopo não conferir, ou '' se confere. Os motivos são TRAVAS_PAGINA (sem o '').
+  // O escopo mostra uma recompensa só: o título pedido uma vez, inteiro, no máximo um custo, o pedido, e no máximo uma descrição.
+  function motivoEscopo(escopo, dedicado, alvo, custo) {
+    const c = classificarFolhas(escopo, dedicado, alvo, custo);
+    if (temTextoSolto(escopo, dedicado, c.folhas)) return 'texto-solto';
+    if (c.titulos.length !== 1) return 'titulos';
+    const total = c.custos.length + (c.texto(c.titulos[0]) === alvo ? 0 : 1);
     if (total > 1) return 'custo';
-    if (resto.length > 1) return 'resto';
-    if (resto.length && !eDescricao(texto(resto[0]))) return 'descricao';
-    if (custos.some((el) => !mesmoCusto(texto(el), custo) || custoDeOutroBloco(el, alvo))) return 'custo';
+    if (c.resto.length > 1) return 'resto';
+    if (c.resto.length && !eDescricao(c.texto(c.resto[0]))) return 'descricao';
+    if (c.custos.some((el) => !mesmoCusto(c.texto(el), custo) || custoDeOutroBloco(el, alvo))) return 'custo';
     return total === 1 || numerosDe(textoDe(dedicado)).includes(Number(custo)) ? '' : 'custo';
   }
 
@@ -439,13 +472,9 @@ var MESA_TWITCH_DOM = (function () {
     return motivoEscopo(escopo, dedicado, alvo, custo) === '';
   }
 
-  // Mesma decisão de acharBotaoResgatar, com a trava de quem não deixou clicar (lista fechada, TRAVAS_PAGINA).
-  // Só o seletor dedicado, dentro do centro. Se ele está num cartão, o cartão decide. Se não, o centro
-  // inteiro tem de mostrar uma recompensa só (O-3). Na dúvida, nada é clicado.
-  function acharBotaoResgatarComTrava(doc, custo, titulo, centroDado) {
-    const centro = centroDado || primeiro(doc, SELETORES.centro);
-    const dedicado = primeiro(doc, SELETORES.resgatar);
-    const alvo = normal(titulo);
+  // Decisão do botão de confirmação dentro do centro, sem ler o seletor: lista fechada de travas (TRAVAS_PAGINA).
+  // Se ele está num cartão, o cartão decide. Se não, o centro inteiro tem de mostrar uma recompensa só (O-3). Na dúvida, nada é clicado.
+  function travaDoBotao(centro, dedicado, alvo, custo) {
     if (!dedicado || !centro || !alvo || dedicado === centro) return { botao: null, trava: 'sem-dedicado' };
     if (!dentroDe(dedicado, centro)) return { botao: null, trava: 'fora-do-centro' };
     const cartao = cartaoDoBotao(centro, dedicado);
@@ -455,6 +484,14 @@ var MESA_TWITCH_DOM = (function () {
     if (temOutroCartao(centro, dedicado)) return { botao: null, trava: 'outro-cartao' };
     const motivo = motivoEscopo(centro, dedicado, alvo, custo);
     return motivo ? { botao: null, trava: motivo } : { botao: dedicado, trava: '' };
+  }
+
+  // Mesma decisão de acharBotaoResgatar, com a trava de quem não deixou clicar (lista fechada, TRAVAS_PAGINA).
+  // Só o seletor dedicado, dentro do centro.
+  function acharBotaoResgatarComTrava(doc, custo, titulo, centroDado) {
+    const centro = centroDado || primeiro(doc, SELETORES.centro);
+    const dedicado = primeiro(doc, SELETORES.resgatar);
+    return travaDoBotao(centro, dedicado, normal(titulo), custo);
   }
 
   function acharBotaoResgatar(doc, custo, titulo, centroDado) {
@@ -528,24 +565,79 @@ var MESA_TWITCH_DOM = (function () {
     return Array.from(centro.querySelectorAll('button,[role="button"]')).filter((b) => !confirmacao.includes(b));
   }
 
-  // Cards do custo: botões com exatamente um número, igual ao custo pedido. Sem candidato aninhado. Ordem do DOM.
+  // Cards do custo: botões só com o número, igual ao custo pedido (SO_NUMERO no texto inteiro, um número só).
+  // Assim "Redeem 300" num detalhe não vira card. Sem candidato aninhado. Ordem do DOM.
   function cardsPorCusto(centro, custo) {
     if (!centro) return [];
     const alvo = Number(custo);
     const achados = botoesSemConfirmacao(centro).filter((b) => {
-      const nums = numerosDe(normal(textoDe(b)));
+      const t = normal(textoDe(b));
+      if (!SO_NUMERO.test(t)) return false;
+      const nums = numerosDe(t);
       return nums.length === 1 && nums[0] === alvo;
     });
     return maisInternos(achados);
   }
 
-  // Folha com o título pedido, fora de qualquer card. Só booleano: nenhum texto sai daqui.
-  function folhaTitulo(centro, titulo, cards) {
+  // Folhas (sem filho, com texto) do centro com o título pedido. Devolve os elementos.
+  function folhasTitulo(centro, alvo) {
+    if (!centro || !alvo) return [];
+    return seguro(() => Array.from(centro.querySelectorAll('*'))
+      .filter((f) => !Array.from(f.children || []).length && normal(textoDe(f)) === alvo), []);
+  }
+
+  // Retrato tirado antes do clique: folhas com o título, botões do centro e o card clicado. Só conjuntos e referência.
+  function retratoAntes(centro, titulo, card) {
     const alvo = normal(titulo);
-    if (!centro || !alvo) return false;
-    const dentroDeCard = (f) => (cards || []).some((c) => dentroDe(f, c));
-    return Array.from(centro.querySelectorAll('*')).some((f) => !Array.from(f.children || []).length
-      && normal(textoDe(f)) === alvo && !dentroDeCard(f));
+    return {
+      titulos: new Set(folhasTitulo(centro, alvo)),
+      botoes: new Set(centro ? seguro(() => Array.from(centro.querySelectorAll('button,[role="button"]')), []) : []),
+      card,
+    };
+  }
+
+  // Folha do título dentro de botão ou role=button do centro não é detalhe (re-render da lista).
+  function dentroDeBotaoDoCentro(el, centro) {
+    for (let x = el; x && x !== centro; x = x.parentElement) if (eBotaoReal(x)) return true;
+    return false;
+  }
+
+  // Visível: getClientRects com algo. Elemento sem o método conta como visível (lado seguro).
+  function visivelDe(el) {
+    return seguro(() => el.getClientRects().length > 0, true);
+  }
+
+  // Dedicado no centro: qualquer elemento do centro com o data-test-selector do botão de confirmação.
+  const DEDICADO_DTS = (SELETORES.resgatar[0].match(/data-test-selector="([^"]+)"/) || [])[1] || '';
+  function temDedicadoNoCentro(centro) {
+    if (!DEDICADO_DTS) return false;
+    return seguro(() => Array.from(centro.querySelectorAll('*')).some((e) => atributo(e, 'data-test-selector') === DEDICADO_DTS), false);
+  }
+
+  // Filtro de recompensas visível: a lista está em uso. Filtro ausente ou com rects vazios = detalhe.
+  function filtroVisivel(centro) {
+    return seguro(() => Array.from(centro.querySelectorAll('button,[role="button"]'))
+      .some((b) => String(atributo(b, 'data-a-target') || '').indexOf('reward-filter-') === 0 && visivelDe(b)), false);
+  }
+
+  // Guardas antes de cada clique (card ou item por título): dedicado no centro, ou folha do título visível fora de botão
+  // sem filtro visível. Título oculto (sem rects) não bloqueia. Cartão (li, article) não libera: só o filtro libera.
+  function guardaCard(centro, titulo) {
+    if (temDedicadoNoCentro(centro)) return 'dedicado';
+    const alvo = normal(titulo);
+    const visivel = folhasTitulo(centro, alvo).some((f) => visivelDe(f) && !dentroDeBotaoDoCentro(f, centro));
+    return visivel && !filtroVisivel(centro) ? 'titulo-visivel' : '';
+  }
+
+  // Detalhe abriu: folha do título que não estava no retrato e fica fora do card clicado, dos cards da lista e de
+  // qualquer botão ou role=button do centro. Sumiço de cards, de filtros ou botões novos não conta aqui.
+  // Título quebrado em filhos, com texto extra na folha ou dentro de botão no detalhe dá falso negativo seguro:
+  // fecha sem Redeem, e aparece como pos.novos > 0 com pos.titulo = não.
+  function detalheAbriu(centro, titulo, retrato, cards) {
+    const alvo = normal(titulo);
+    if (!centro || !alvo || !retrato) return false;
+    const dentroDeCard = (f) => (retrato.card && dentroDe(f, retrato.card)) || (cards || []).some((c) => dentroDe(f, c));
+    return folhasTitulo(centro, alvo).some((f) => !retrato.titulos.has(f) && !dentroDeCard(f) && !dentroDeBotaoDoCentro(f, centro));
   }
 
   const CUSTOS_VISTOS_MAX = 8;
@@ -607,9 +699,359 @@ var MESA_TWITCH_DOM = (function () {
     }, 0);
   }
 
+  // Diagnóstico do percurso (só nomes curtos, atributos, booleanos e contagens; nunca texto da página).
+  function tagDe(el) {
+    return seguro(() => curto(String(el.tagName || el.tag || '').toLowerCase()), '');
+  }
+
+  function emBotaoDe(el) {
+    return seguro(() => !!el.closest('button,[role="button"]'), false);
+  }
+
+  function cliqueDiag(el) {
+    return { tag: tagDe(el), role: curto(atributo(el, 'role')), emBotao: emBotaoDe(el) };
+  }
+
+  // Item achado pelo título e recusado: tag, role, se está em botão, se tem o custo e se está visível.
+  function rejeitadoDiag(el, alvo, custo) {
+    return {
+      tag: tagDe(el),
+      role: curto(atributo(el, 'role')),
+      emBotao: emBotaoDe(el),
+      custo: seguro(() => itemTemCusto(el, alvo, custo), false),
+      visivel: visivelDe(el),
+    };
+  }
+
+  // Lista do centro antes do clique: botões sem o de confirmação e quantos têm o custo no texto.
+  function listaDiag(centro, custo) {
+    return seguro(() => {
+      if (!centro) return null;
+      const botoes = botoesSemConfirmacao(centro);
+      const alvo = Number(custo);
+      const comCusto = botoes.filter((b) => numerosDe(normal(textoDe(b))).includes(alvo)).length;
+      return { cards: Math.min(CONTAGEM_CENTRO_MAX, botoes.length), comCusto: Math.min(CONTAGEM_CENTRO_MAX, comCusto) };
+    }, null);
+  }
+
+  // Antes do clique: diagnóstico do card, retrato, clique e lista. Vale para o caminho por título e o por custo.
+  function prepararClique(el, caminho, centro, pedido, cards) {
+    return {
+      caminho,
+      card: el,
+      cardDiag: seguro(() => botaoDiag(el, pedido.custo), null),
+      cardsLista: cards,
+      retrato: seguro(() => retratoAntes(centro, pedido.titulo, el), null),
+      clique: cliqueDiag(el),
+      lista: listaDiag(centro, pedido.custo),
+    };
+  }
+
+  // Clica e só então grava o diagnóstico pré-clique no ctx. Sem clique feito, nada entra.
+  function clicarCard(ctx, el, pre) {
+    const clicou = clicar(el);
+    if (clicou) Object.assign(ctx, pre);
+    return clicou;
+  }
+
+  // Nível da cadeia de um nó, até 3 ancestrais (nunca o próprio).
+  function ancestrais(el, alvo) {
+    const out = [];
+    for (let x = el.parentElement; x && out.length < 3; x = x.parentElement) out.push(nivelDiag(x, alvo));
+    return out;
+  }
+
+  // Botões do centro com o custo no texto, sem o card clicado. Novos primeiro, na ordem do DOM.
+  function candidatosEl(centro, card, retrato, custo) {
+    const alvo = Number(custo);
+    const lista = Array.from(centro.querySelectorAll('button,[role="button"]'))
+      .filter((b) => b !== card && numerosDe(normal(textoDe(b))).includes(alvo));
+    return [...lista.filter((b) => !retrato.botoes.has(b)), ...lista.filter((b) => retrato.botoes.has(b))];
+  }
+
+  function candidatoDiag(centro, b, retrato, alvo, custo) {
+    return {
+      dts: curto(atributo(b, 'data-test-selector')),
+      alvo: curto(atributo(b, 'data-a-target')),
+      aria: curto(atributo(b, 'aria-label')),
+      no: nivelDiag(b, alvo).no,
+      anc: ancestrais(b, alvo),
+      novo: !retrato.botoes.has(b),
+      desab: desabilitado(b),
+      trava: travaDoBotao(centro, b, alvo, custo).trava || 'ok',
+    };
+  }
+
+  // Menor ancestral comum de duas folhas/botões.
+  function ancestralComum(a, b) {
+    const da = [];
+    for (let x = a; x; x = x.parentElement) da.push(x);
+    for (let y = b; y; y = y.parentElement) if (da.includes(y)) return y;
+    return null;
+  }
+
+  // Escopo: menor ancestral comum da folha nova do título e do candidato (dentro do centro), com a trava simulada nele.
+  function escopoDiag(centro, folha, cand, alvo, custo) {
+    const comum = ancestralComum(folha, cand);
+    const raiz = comum && dentroDe(comum, centro) ? comum : centro;
+    const nivel = nivelDiag(raiz, alvo);
+    return { no: nivel.no, botoes: nivel.botoes, trava: motivoEscopo(raiz, cand, alvo, custo) || 'ok' };
+  }
+
+  // Folhas do centro: total, com o título, de custo, resto e se alguma folha numérica é o saldo lido.
+  function folhasDiag(centro, alvo, saldo) {
+    const folhas = Array.from(centro.querySelectorAll('*')).filter((f) => !Array.from(f.children || []).length && textoDe(f));
+    let titulos = 0;
+    let custos = 0;
+    let resto = 0;
+    let saldoAchado = false;
+    for (const f of folhas) {
+      const t = normal(textoDe(f));
+      if (t === alvo) {
+        titulos += 1;
+      } else if (SO_NUMERO.test(t)) {
+        custos += 1;
+        if (numerosDe(t).some((n) => saldo.includes(n))) saldoAchado = true;
+      } else {
+        resto += 1;
+      }
+    }
+    return {
+      total: Math.min(CONTAGEM_CENTRO_MAX, folhas.length),
+      titulos: Math.min(CONTAGEM_CENTRO_MAX, titulos),
+      custos: Math.min(CONTAGEM_CENTRO_MAX, custos),
+      resto: Math.min(CONTAGEM_CENTRO_MAX, resto),
+      saldo: saldoAchado,
+    };
+  }
+
+  // Botões com o título ou a contagem fora do centro (diagnóstico do item fora do centro).
+  function foraDoCentroDiag(doc, centro, alvo) {
+    return seguro(() => Array.from(doc.querySelectorAll('button,[role="button"],[title]'))
+      .filter((el) => !dentroDe(el, centro) && (normal(textoDe(el)).includes(alvo) || normal(atributo(el, 'title')).includes(alvo)))
+      .length, 0);
+  }
+
+  // Diagnóstico do que mudou depois do clique: posição, folhas, escopo, candidatos e fora do centro. Só com centro aberto.
+  function montarPosicao(ctx, doc, pedido, centro) {
+    if (!centro || !ctx.retrato) return;
+    const alvo = normal(pedido.titulo);
+    const retrato = ctx.retrato;
+    const cards = ctx.cardsLista || [];
+    const detalhe = seguro(() => detalheAbriu(centro, pedido.titulo, retrato, cards), false);
+    ctx.pos = seguro(() => {
+      const botoes = Array.from(centro.querySelectorAll('button,[role="button"]'));
+      return {
+        centro: true,
+        titulo: detalhe,
+        cardPresente: !!ctx.card && dentroDe(ctx.card, centro),
+        filtros: botoes.some((b) => (atributo(b, 'data-a-target') || '').indexOf('reward-filter-') === 0),
+        novos: Math.min(CONTAGEM_CENTRO_MAX, botoes.filter((b) => !retrato.botoes.has(b)).length),
+      };
+    }, null);
+    ctx.folhas = seguro(() => folhasDiag(centro, alvo, ctx.saldo || []), null);
+    const novas = folhasTitulo(centro, alvo).filter((f) => !retrato.titulos.has(f));
+    const cands = seguro(() => candidatosEl(centro, ctx.card, retrato, pedido.custo), []);
+    ctx.candidatos = cands.slice(0, 3)
+      .map((b) => seguro(() => candidatoDiag(centro, b, retrato, alvo, pedido.custo), null))
+      .filter(Boolean);
+    ctx.escopo = novas.length && cands.length
+      ? seguro(() => escopoDiag(centro, novas[0], cands[0], alvo, pedido.custo), null)
+      : null;
+    ctx.foraDoCentro = foraDoCentroDiag(doc, centro, alvo);
+  }
+
+  // Percurso do resgate: só em falha com clique ou com item recusado ou custo na lista a reportar. Senão, a chave não existe.
+  function percursoDe(ctx) {
+    const comCusto = !!(ctx.lista && ctx.lista.comCusto > 0);
+    if (!ctx.clique && !ctx.rejeitado && !comCusto && !ctx.bloqueio && !ctx.redeem) return null;
+    const out = {
+      caminho: ctx.caminho || '',
+      bloqueio: ctx.bloqueio || '',
+      clique: ctx.clique || null,
+      rejeitado: ctx.rejeitado || null,
+      lista: ctx.lista || null,
+      pos: ctx.pos || null,
+      folhas: ctx.folhas || null,
+      escopo: ctx.escopo || null,
+      candidatos: ctx.candidatos || [],
+      foraDoCentro: ctx.foraDoCentro || 0,
+    };
+    if (ctx.redeem) out.redeem = ctx.redeem;
+    return out;
+  }
+
   // Trecho pós-clique do resgate, usado pelo item achado e pelo card conferido: campo de texto, Redeem com custo, clique, fechar.
   // Só aqui sai o clique no Redeem.
-  async function confirmarResgate(doc, pedido, deps, achaCentro, semCentro) {
+  // Redeem por texto (caminho sem seletor dedicado). Ordem fixa: a primeira condição que falha dá a trava.
+  // Só booleanos, contagens e tamanhos saem daqui. O texto é comparado, nunca exportado.
+  const REDEEM_TEXTO_RE = /^(?:redeem|resgatar) ?(\d{1,3}(?:[., ]\d{3})+|\d+)$/;
+  const REDEEM_BOTAO_VAZIO = {
+    palavraRedeem: false, palavraResgatar: false, numeroInicio: false, numeroFim: false, numerosQtd: 0,
+    palavras: 0, letras: 0, tamanho: 0, folhas: 0, desab: false, temDts: false, temAlvo: false, temAria: false,
+  };
+  const REDEEM_DESC_VAZIO = { n: 0, tamanho: 0, palavras: 0, digito: false, pontaDigito: false, falaCusto: false };
+
+  function atributoPreenchido(el, nome) {
+    return !!String(atributo(el, nome) || '').trim();
+  }
+
+  function palavrasDe(t) {
+    return t.split(' ').filter(Boolean).length;
+  }
+
+  // Métricas do botão de custo: booleanos e contagens.
+  function redeemBotaoDiag(b) {
+    return seguro(() => {
+      const t = normal(textoDe(b));
+      return {
+        palavraRedeem: /^redeem\b/.test(t),
+        palavraResgatar: /^resgatar\b/.test(t),
+        numeroInicio: /^\d/.test(t),
+        numeroFim: /\d$/.test(t),
+        numerosQtd: Math.min(CONTAGEM_CENTRO_MAX, numerosDe(t).length),
+        palavras: Math.min(CONTAGEM_CENTRO_MAX, palavrasDe(t)),
+        letras: Math.min(CONTAGEM_CENTRO_MAX, (t.match(/\p{L}/gu) || []).length),
+        tamanho: Math.min(CONTAGEM_CENTRO_MAX, t.length),
+        folhas: Math.min(CONTAGEM_CENTRO_MAX, Array.from(b.querySelectorAll('*')).filter((x) => !Array.from(x.children || []).length).length),
+        desab: desabilitado(b),
+        temDts: atributoPreenchido(b, 'data-test-selector'),
+        temAlvo: atributoPreenchido(b, 'data-a-target'),
+        temAria: atributoPreenchido(b, 'aria-label'),
+      };
+    }, REDEEM_BOTAO_VAZIO);
+  }
+
+  // Descrição do detalhe: folhas que não são título, custo nem botão. Só contagens, tamanho e booleanos.
+  function redeemDescDiag(centro, alvo) {
+    return seguro(() => {
+      const folhas = Array.from(centro.querySelectorAll('*'))
+        .filter((f) => !Array.from(f.children || []).length && normal(textoDe(f)));
+      const resto = folhas.filter((f) => {
+        const t = normal(textoDe(f));
+        return t !== alvo && !SO_NUMERO.test(t) && !dentroDeBotaoDoCentro(f, centro);
+      });
+      if (!resto.length) return { ...REDEEM_DESC_VAZIO };
+      const t = normal(textoDe(resto[0]));
+      return {
+        n: Math.min(CONTAGEM_CENTRO_MAX, resto.length),
+        tamanho: Math.min(CONTAGEM_CENTRO_MAX, t.length),
+        palavras: Math.min(CONTAGEM_CENTRO_MAX, palavrasDe(t)),
+        digito: /\d/.test(t),
+        pontaDigito: /^\d|\d$/.test(t),
+        falaCusto: FALA_DE_CUSTO.test(t),
+      };
+    }, { ...REDEEM_DESC_VAZIO });
+  }
+
+  // Saldo lido do resumo (mesma fonte de lerFatos). Só número simples; ilegível = null, e nada é excluído.
+  function saldoNumeroDe(doc) {
+    return seguro(() => {
+      const texto = primeiroTexto(doc, SELETORES.saldo) || textoDe(primeiro(doc, SELETORES.botaoPontos));
+      if (!saldoLidoDe(texto)) return null;
+      const m = /^(\d{1,3}(?:[.,\s]\d{3})+|\d+)$/.exec(String(texto).trim());
+      return m ? Number(m[1].replace(/\D/g, '')) : null;
+    }, null);
+  }
+
+  // Filtro de recompensas visível para a lista do Redeem. Erro ao avaliar conta como visível (fail-closed).
+  function listaFiltroEstrito(centro) {
+    return Array.from(centro.querySelectorAll('button,[role="button"]'))
+      .some((b) => String(atributo(b, 'data-a-target') || '').indexOf('reward-filter-') === 0 && visivelDe(b));
+  }
+
+  // Botão cujo texto é só o número do saldo lido. Só este botão é excluído da lista.
+  function eSaldoExato(b, saldo) {
+    const t = normal(textoDe(b));
+    return /^[\d.,\s]+$/.test(t) && numerosDe(t).length === 1 && numerosDe(t)[0] === saldo;
+  }
+
+  // Redeem por texto. Condições, na ordem: centro de cabeçalho, detalhe com folha nova, nenhuma lista visível,
+  // um único botão com o custo, novo no detalhe, visível, texto Redeem/Resgatar + custo, sem atributo de dados.
+  // Fail-closed: exceção ao avaliar a lista conta como lista presente; exceção no alvo conta como oculto.
+  function acharRedeemPorTexto(doc, centro, pedido, retrato, cards) {
+    const custo = Number(pedido.custo);
+    const alvo = normal(pedido.titulo);
+    const detalhe = seguro(() => !!retrato && detalheAbriu(centro, pedido.titulo, retrato, cards), false);
+    const cardVisivel = seguro(() => (!!retrato && !!retrato.card && visivelDe(retrato.card))
+      || (cards || []).some((c) => dentroDe(c, centro) && visivelDe(c)), true);
+    const botoes = seguro(() => botoesSemConfirmacao(centro), null);
+    const comCusto = seguro(() => (botoes || []).filter((b) => numerosDe(normal(textoDe(b))).includes(custo)), null);
+    const saldo = saldoNumeroDe(doc);
+    const botaoLista = seguro(() => (botoes || []).some((b) => !(comCusto || []).includes(b)
+      && visivelDe(b)
+      && /\d/.test(normal(textoDe(b)))
+      && !(saldo !== null && eSaldoExato(b, saldo))), true);
+    const lista = !botoes || !comCusto || seguro(() => listaFiltroEstrito(centro), true) || cardVisivel || botaoLista;
+    const centroOk = seguro(() => centroPorCabecalho(doc) === centro, false);
+    const lista0 = comCusto || [];
+    let trava = '';
+    let botao = null;
+    let bDiag = REDEEM_BOTAO_VAZIO;
+    let novo = false;
+    let visivel = false;
+    let texto = false;
+    let atrib = false;
+    if (!centroOk) trava = 'redeem-centro';
+    else if (!detalhe) trava = 'redeem-detalhe';
+    else if (lista) trava = 'redeem-lista';
+    else if (lista0.length === 0) trava = 'redeem-nenhum';
+    else if (lista0.length > 1) trava = 'redeem-varios';
+    else {
+      const b = lista0[0];
+      bDiag = redeemBotaoDiag(b);
+      novo = !(retrato && retrato.botoes.has(b));
+      visivel = seguro(() => b.getClientRects().length > 0, false);
+      const m = REDEEM_TEXTO_RE.exec(normal(textoDe(b)));
+      texto = !!m && Number(m[1].replace(/\D/g, '')) === custo;
+      atrib = atributoPreenchido(b, 'data-test-selector') || atributoPreenchido(b, 'data-a-target');
+      if (!novo) trava = 'redeem-velho';
+      else if (!visivel) trava = 'redeem-oculto';
+      else if (!texto) trava = 'redeem-texto';
+      else if (atrib) trava = 'redeem-atributo';
+      else botao = b;
+    }
+    return {
+      botao,
+      trava,
+      diag: {
+        trava,
+        centro: centroOk,
+        detalhe,
+        lista,
+        unico: lista0.length === 1,
+        novo,
+        visivel,
+        texto,
+        atributo: atrib,
+        comCusto: Math.min(CONTAGEM_CENTRO_MAX, lista0.length),
+        botao: bDiag,
+        desc: redeemDescDiag(centro, alvo),
+      },
+    };
+  }
+
+  // Estado depois do clique no Redeem por texto: centro, botão, desab, detalhe, novos e folhas. Só contagens e booleanos.
+  function posCliqueDiag(ctx, centro, pedido, botao) {
+    return seguro(() => {
+      if (!centro) return { centro: false, botao: false, desab: false, titulo: false, novos: 0, folhas: null };
+      const retrato = ctx.retrato;
+      const botoes = Array.from(centro.querySelectorAll('button,[role="button"]'));
+      return {
+        centro: true,
+        botao: !!botao && dentroDe(botao, centro),
+        desab: !!botao && desabilitado(botao),
+        titulo: seguro(() => detalheAbriu(centro, pedido.titulo, retrato, ctx.cardsLista || []), false),
+        novos: Math.min(CONTAGEM_CENTRO_MAX, botoes.filter((b) => !(retrato && retrato.botoes.has(b))).length),
+        folhas: folhasDiag(centro, normal(pedido.titulo), ctx.saldo || []),
+      };
+    }, null);
+  }
+
+  // Trecho pós-clique do resgate, usado pelo item achado e pelo card conferido: campo de texto, Redeem com custo, clique, fechar.
+  // Só aqui sai o clique no Redeem. Sem seletor dedicado, o Redeem é achado pelo texto a cada poll (acharRedeemPorTexto),
+  // e o campo de texto é verificado a cada poll desse caminho. O clique é um só.
+  async function confirmarResgate(doc, pedido, deps, achaCentro, semCentro, ctx) {
     const aberto = achaCentro();
     if (!aberto) return semCentro('confirmar');
     if (primeiro(aberto, SELETORES.campoTexto)) {
@@ -617,14 +1059,28 @@ var MESA_TWITCH_DOM = (function () {
       return { estado: 'falhou', motivo: 'pede-texto' };
     }
     let ultimo = { botao: null, trava: 'sem-dedicado' };
-    const botao = await deps.esperar(() => {
-      ultimo = acharBotaoResgatarComTrava(doc, pedido.custo, pedido.titulo, achaCentro());
-      return ultimo.botao;
+    const achado = await deps.esperar(() => {
+      const centro = achaCentro();
+      ultimo = acharBotaoResgatarComTrava(doc, pedido.custo, pedido.titulo, centro);
+      if (ultimo.botao) return { botao: ultimo.botao, texto: false };
+      if (ultimo.trava !== 'sem-dedicado' || !centro || primeiro(doc, SELETORES.resgatar)) return null;
+      if (primeiro(centro, SELETORES.campoTexto)) return { pede: true };
+      const t = acharRedeemPorTexto(doc, centro, pedido, ctx.retrato, ctx.cardsLista);
+      ctx.redeem = t.diag;
+      ultimo = { botao: t.botao, trava: t.trava };
+      return t.botao ? { botao: t.botao, texto: true } : null;
     }, 5000);
+    if (achado && achado.pede) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'pede-texto' };
+    }
+    const botao = achado ? achado.botao : null;
     if (!botao) {
       const dialogos = dialogosDiag(doc, pedido.titulo, null);
       const botoesCentro = botoesDoCentro(doc, pedido.custo);
       const totalBotoesCentro = contarBotoesCentro(doc);
+      // Diagnóstico tirado com o centro ainda aberto, antes de fechar.
+      montarPosicao(ctx, doc, pedido, achaCentro());
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: ultimo.trava, dialogos, botoesCentro, totalBotoesCentro };
     }
@@ -632,17 +1088,40 @@ var MESA_TWITCH_DOM = (function () {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };
     }
+    // Reavaliação síncrona logo antes do clique: só clica se a mesma decisão valer agora.
+    const via = achado.texto ? 'texto' : 'dedicado';
+    const centroAgora = achaCentro();
+    if (!centroAgora) return semCentro('confirmar');
+    const decisao = achado.texto
+      ? acharRedeemPorTexto(doc, centroAgora, pedido, ctx.retrato, ctx.cardsLista)
+      : acharBotaoResgatarComTrava(doc, pedido.custo, pedido.titulo, centroAgora);
+    if (decisao.botao !== botao) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: decisao.trava, dialogos: [] };
+    }
+    // Aviso antes do clique: o pendente passa a "clicado" e não reenvia o resgate. Se o aviso lançar, não clica.
+    try {
+      if (typeof deps.aoClicar === 'function') deps.aoClicar(via);
+    } catch {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'outro' };
+    }
     clicar(botao);
     await deps.pausa(1500);
+    if (achado.texto) {
+      ctx.posClique = posCliqueDiag(ctx, achaCentro(), pedido, botao);
+      await fecharCentro(doc, deps);
+      return { estado: 'clicado', motivo: '', via: 'texto', redeem: ctx.redeem, posClique: ctx.posClique };
+    }
     await fecharCentro(doc, deps);
     return { estado: 'clicado', motivo: '' };
   }
 
   const MAX_TENTATIVAS_CARD = 3;
 
-  // Fallback por custo: abre cada card do custo, confere o título no detalhe e só então segue para o Redeem.
+  // Fallback por custo: abre cada card do custo, confere o título no detalhe (folha nova) e só então segue para o Redeem.
   // Card que não confere: fecha, reabre a lista e vai ao próximo. Nenhum clique além disso.
-  // ctx.card guarda a referência do último card clicado (diagnóstico do cardClicado).
+  // ctx guarda o diagnóstico do card clicado (antes do clique).
   async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx) {
     const { titulo, custo } = pedido;
     const diag = () => ({
@@ -653,6 +1132,7 @@ var MESA_TWITCH_DOM = (function () {
     });
     const todos = cardsPorCusto(achaCentro(), custo);
     if (!todos.length) {
+      ctx.lista = listaDiag(achaCentro(), custo);
       const r = diag();
       await fecharCentro(doc, deps);
       return r;
@@ -666,19 +1146,30 @@ var MESA_TWITCH_DOM = (function () {
       const atuais = cardsPorCusto(achaCentro(), custo);
       const habilitados = atuais.filter((c) => !desabilitado(c));
       if (indice >= habilitados.length) break;
-      if (folhaTitulo(achaCentro(), titulo, atuais)) {
+      if (!achaCentro()) return semCentro('confirmar');
+      // Diagnóstico tirado com a lista aberta, antes do clique no card: depois de fechar o centro, custosVistos sairia vazio.
+      const diagLista = diag();
+      const card = habilitados[indice];
+      const bloqueio = guardaCard(achaCentro(), titulo);
+      if (bloqueio) {
+        ctx.bloqueio = bloqueio;
+        ctx.lista = listaDiag(achaCentro(), custo);
         const r = diag();
         await fecharCentro(doc, deps);
         return r;
       }
+      const pre = prepararClique(card, 'custo', achaCentro(), pedido, atuais);
+      if (!clicarCard(ctx, card, pre)) {
+        ctx.lista = pre.lista;
+        const r = diag();
+        await fecharCentro(doc, deps);
+        return r;
+      }
+      await deps.esperar(() => detalheAbriu(achaCentro(), titulo, ctx.retrato, atuais), 3000);
       if (!achaCentro()) return semCentro('confirmar');
-      // Diagnóstico tirado com a lista aberta, antes do clique no card: depois de fechar o centro, custosVistos sairia vazio.
-      const diagLista = diag();
-      ctx.card = habilitados[indice];
-      clicar(habilitados[indice]);
-      await deps.esperar(() => folhaTitulo(achaCentro(), titulo, atuais), 3000);
-      if (!achaCentro()) return semCentro('confirmar');
-      if (folhaTitulo(achaCentro(), titulo, atuais)) return confirmarResgate(doc, pedido, deps, achaCentro, semCentro);
+      if (detalheAbriu(achaCentro(), titulo, ctx.retrato, atuais)) return confirmarResgate(doc, pedido, deps, achaCentro, semCentro, ctx);
+      // Detalhe não abriu: diagnóstico tirado com o centro ainda aberto, antes de fechar.
+      montarPosicao(ctx, doc, pedido, achaCentro());
       await fecharCentro(doc, deps);
       const fechou = !!(await deps.esperar(() => !achaCentro(), 2000));
       // Sem fechamento, aborta: nenhum clique extra no resumo nem em card.
@@ -694,11 +1185,13 @@ var MESA_TWITCH_DOM = (function () {
     return r;
   }
 
-  // Fluxo do resgate: abre o centro, acha a recompensa pelo título, clica e confirma no botão de custo.
+  // Fluxo do resgate: abre o centro, acha a recompensa pelo título (com o custo no texto), clica e confirma no botão de custo.
   async function resgatarFluxo(doc, pedido, deps, ctx) {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
     if (!resumo) return { estado: 'falhou', motivo: 'sem-resumo' };
     const achaCentro = () => centroAberto(doc);
+    // Saldo lido do resumo antes de qualquer clique: só para o diagnóstico (folhas.saldo).
+    ctx.saldo = seguro(() => numerosDe(textoDe(resumo)), []);
     // Diagnóstico: havia diálogo antes do clique no resumo?
     let dialogoAntes = false;
     try { dialogoAntes = !!doc.querySelector('[role="dialog"]'); } catch { dialogoAntes = false; }
@@ -724,13 +1217,14 @@ var MESA_TWITCH_DOM = (function () {
     });
     const centro = await deps.esperar(achaCentro, 6000);
     if (!centro) return semCentro('abrir');
-    let busca = { achado: null, ambigua: false };
+    let busca = { achado: null, ambigua: false, rejeitado: null };
     // Para quando acha pelo título ou quando já há card do custo pedido (o título só aparece depois de abrir o card).
     await deps.esperar(() => {
-      busca = buscarRecompensa(doc, pedido.titulo, achaCentro());
+      busca = buscarRecompensa(doc, pedido.titulo, achaCentro(), pedido.custo);
       return busca.achado || (!busca.ambigua && cardsPorCusto(achaCentro(), pedido.custo).length > 0);
     }, 6000);
     if (!achaCentro()) return semCentro('buscar');
+    ctx.rejeitado = busca.rejeitado ? rejeitadoDiag(busca.rejeitado, normal(pedido.titulo), pedido.custo) : null;
     const item = busca.achado;
     if (!item && busca.ambigua) {
       const vistos = titulosVistos(achaCentro());
@@ -742,19 +1236,54 @@ var MESA_TWITCH_DOM = (function () {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };
     }
-    if (clicar(item)) {
-      clicou = true;
-      ctx.card = item;
+    const bloqueioItem = guardaCard(achaCentro(), pedido.titulo);
+    if (bloqueioItem) {
+      ctx.bloqueio = bloqueioItem;
+      ctx.lista = listaDiag(achaCentro(), pedido.custo);
+      const r = { estado: 'falhou', motivo: 'sem-recompensa', vistos: custosVistos(achaCentro()), dialogos: dialogosDiag(doc, pedido.titulo, null) };
+      await fecharCentro(doc, deps);
+      return r;
     }
+    const pre = prepararClique(item, 'titulo', achaCentro(), pedido, []);
+    if (!clicarCard(ctx, item, pre)) {
+      await fecharCentro(doc, deps);
+      return { estado: 'falhou', motivo: 'outro' };
+    }
+    clicou = true;
     await deps.pausa(600);
-    return confirmarResgate(doc, pedido, deps, achaCentro, semCentro);
+    montarPosicao(ctx, doc, pedido, achaCentro());
+    return confirmarResgate(doc, pedido, deps, achaCentro, semCentro, ctx);
   }
 
-  // Resgate com o card clicado no retorno: cardClicado = { dts, alvo, aria, custo, desab } ou null se nenhum card foi clicado.
+  // Resgate com o card clicado no retorno: cardClicado = { dts, alvo, aria, custo, desab } (antes do clique) ou null se nenhum card foi clicado.
+  // percurso só entra em falha, quando houve clique, item recusado ou custo na lista a reportar.
   async function resgatar(doc, pedido, deps) {
-    const ctx = { card: null };
+    const ctx = {
+      card: null,
+      cardDiag: null,
+      cardsLista: [],
+      retrato: null,
+      caminho: '',
+      clique: null,
+      lista: null,
+      rejeitado: null,
+      pos: null,
+      folhas: null,
+      escopo: null,
+      candidatos: [],
+      foraDoCentro: 0,
+      saldo: [],
+      bloqueio: '',
+      redeem: null,
+      posClique: null,
+    };
     const r = await resgatarFluxo(doc, pedido, deps, ctx);
-    return Object.assign({}, r, { cardClicado: ctx.card ? botaoDiag(ctx.card, pedido.custo) : null });
+    const out = Object.assign({}, r, { cardClicado: ctx.cardDiag });
+    if (r.estado === 'falhou') {
+      const percurso = percursoDe(ctx);
+      if (percurso) out.percurso = percurso;
+    }
+    return out;
   }
 
   return {
@@ -780,6 +1309,7 @@ var MESA_TWITCH_DOM = (function () {
     contarBotoesCentro,
     cabecalhoDiag,
     classesPista,
+    acharRedeemPorTexto,
   };
 })();
 

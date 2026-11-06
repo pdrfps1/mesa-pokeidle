@@ -1,5 +1,440 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · bônus Twitch resgata quando acaba, sem limiar de minutos
+
+> A Mesa deixa de esperar um limiar de 2, 5, 10 ou 15 minutos. Um tipo de bônus da Twitch é resgatado quando o prazo dele passa no relógio do servidor e o jogo mandou uma leitura válida. Sempre que um acaba, a Mesa resgata outro. Sem leitura do prazo, o resgate fica parado.
+
+### Destaques do patch
+- **Sem limiar:** o controle «Resgatar quando faltar» saiu do painel.
+- **Resgate ao acabar:** cada tipo é resgatado com o prazo já passado, e não antes.
+- **Sem leitura, sem resgate:** o painel diz «O jogo ainda não mandou o prazo dos bônus. Resgate parado.»
+
+### Bônus Twitch
+*O bônus é resgatado quando acaba, e um bônus sem leitura válida não vira mais zero.*
+
+**Por quê.** O usuário pediu: «sempre que acabar um ele resgata outro». Com o limiar, a Mesa resgatava antes do fim do bônus, e um prazo ausente ou inválido contava como zero, ou seja, como prazo passado.
+
+**Antes → depois**
+- **Quando resgatar:** antes, com menos de 2, 5, 10 ou 15 minutos restantes (padrão 5). Depois, só com o bônus acabado.
+- **Bônus sem leitura:** antes, chave ausente ou inválida virava 0. Depois, chave ausente mantém o valor anterior; valor inválido descarta o bônus daquele frame; objeto só com chaves desconhecidas é recusado; chave extra ao lado de uma conhecida é aceita. Só vale como leitura o frame completo, onde chave ausente quer dizer sem bônus, ou o frame que traz os três tipos; frame parcial atualiza o prazo, mas não prova que outro tipo acabou.
+- **Sem leitura válida:** `escolherResgate` devolve `sem-leitura` e nada é resgatado.
+- **Painel, Recompensas:** o texto agora diz «Cada uma vale 1 hora de +15%. A Mesa resgata de novo quando a anterior acabar.».
+- **Painel, sem-confirmacao:** a frase diz que reiniciar a Mesa libera, mas pode gerar um novo resgate.
+
+**NOVO**
+- situação `sem-leitura` e a frase «O jogo ainda não mandou o prazo dos bônus. Resgate parado.».
+- regra: um tipo só resgata com o prazo passado no relógio do servidor e leitura válida do jogo.
+
+**REMOVIDO**
+- controle «Resgatar quando faltar» no painel.
+- `limiarMin` não é mais normalizado: qualquer valor passa sem lançar e some no próximo salvamento (`catalog.normalize`).
+
+**NÃO MUDOU**
+- o caminho do clique, as travas de `redeem-*` e a trava de `sem-confirmacao` por tipo.
+
+### Arquivos de produto
+- `dashboard/src/main/twitch/points.js`: `escolherResgate` (prazo passado, `sem-leitura`, `sem-confirmacao` por tipo).
+- `dashboard/src/main/twitch/controller.js`: situação `sem-leitura` e `bonusLido`.
+- `dashboard/src/shared/live-catalog.js`: leitura do `bonus` (chave ausente mantém, valor inválido descarta, `bonusLido`).
+- `dashboard/src/shared/catalog.js`: `limiarMin` deixa de ser normalizado.
+- `dashboard/src/renderer/live-bonus.js`: frase `sem-leitura`, texto de Recompensas, frase de `sem-confirmacao` e controle removido.
+
+### Testes
+- `npm test` na árvore deste commit: **579** passaram, 0 falhas.
+- `src/main/twitch/erros-log.test.js` tem **10** testes que não entram no `npm test`.
+- Cobrem a regra nova: `points.test.js`, `controller.test.js`, `catalog.test.js` (`limiarMin` não existe mais), `live-catalog.test.js` e `live-bonus.test.js` (controle removido, frase de `sem-leitura`).
+
+### Não confirmado
+- **Clique real pelo texto, 2026-11-06:** o usuário relatou que o resgate real funcionou uma vez, depois do Redeem por texto. O log não confirma, porque só grava falhas; a evidência é o relato do usuário. Esta entrada corrige a nota da entrada de baixo, que dizia que o clique real ainda não tinha acontecido.
+- **Resgate no fim real de um bônus:** ainda não testado.
+- **Formato real de `bonus` no jogo:** só há fixtures. Se o jogo mandar `bonus: null`, a baía fica em `sem-leitura`.
+- **`{}` com bônus anterior:** preserva o prazo antigo.
+- **Jogo desconectado sem navegação:** o prazo antigo pode vencer e a Mesa resgatar com o WebSocket caído.
+- **Relógio do Windows:** um salto pode antecipar alguns segundos.
+- **Janela sem bônus:** estimada, não medida. 5 a 20 s para um tipo; 30 a 60 s para o segundo tipo que acaba junto; até 180 s + 20 s sem falha.
+
+### Limites conhecidos
+- Saldo curto alonga a espera sem limite: a conta junta cerca de 320 pontos/h e o XP custa 300/h.
+- Trava de `sem-confirmacao` com bônus zerado: aquele tipo fica parado até um reset (troca de conta, automático desligado ou reinício da Mesa).
+- Reiniciar a Mesa libera a trava de `sem-confirmacao`, mas pode gerar um novo resgate.
+- Desligar e religar o automático também libera a trava, e o mesmo tipo pode ser clicado de novo. É o reset manual, aceito como risco.
+
+### Problemas conhecidos
+- `sem-leitura` é espera, não falha: o log só grava falhas, então essa espera não aparece nele.
+- `src/main/index.js:510` ainda repassa `limiarMin`, sem efeito.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · bônus Twitch resgata quando acaba, sem limiar de minutos**
+
+Resumo: a Mesa resgata um bônus da Twitch quando o prazo dele acaba, e não antes. Sem leitura do prazo, o resgate fica parado.
+
+**Bônus Twitch**
+- [Ajuste] Quando resgatar. Antes: com menos de 2, 5, 10 ou 15 minutos restantes (padrão 5). Depois: só com o bônus acabado. Sempre que um acaba, a Mesa resgata outro.
+- [Correção] Bônus sem leitura. Antes: chave ausente ou inválida virava 0, e isso contava como prazo passado. Depois: chave ausente mantém o último prazo lido, valor inválido descarta a leitura daquele frame, e só frame completo ou com os três tipos vale como leitura.
+- [Novo] Resgate parado sem leitura. O painel diz: «O jogo ainda não mandou o prazo dos bônus. Resgate parado.»
+- [Ajuste] Cada resgate vale 1 hora de +15%. A Mesa resgata de novo quando a anterior acabar.
+
+**Painel**
+- [Removido] Controle «Resgatar quando faltar». A configuração antiga some no próximo salvamento.
+- [Ajuste] Frase de `sem-confirmacao`: reiniciar a Mesa libera, mas pode gerar um novo resgate.
+
+**Conhecidos**
+- O clique real pelo texto funcionou uma vez, em 06/11/2026, segundo o relato do usuário. O log não confirma. O resgate no fim real de um bônus ainda não foi testado.
+- O formato real de `bonus` no jogo só foi conferido por fixtures.
+- A janela sem bônus é estimada: 5 a 20 s para um tipo; até 200 s sem falha. Saldo curto alonga sem limite.
+
+## 2026-11-06 — Patch «Vigília» · Redeem da Twitch por texto, com travas e aviso antes do clique
+
+> O resgate passa a achar o Redeem pelo texto quando o seletor dedicado não existe, como na rodada real de 15:34. Só clica se nove travas passarem no mesmo poll e de novo logo antes do clique. Um aviso é gravado antes de cada clique, e um clique sem confirmação não é repetido. O clique real pelo texto ainda não aconteceu.
+
+### Destaques do patch
+- **Redeem por texto:** texto exato «Redeem N» ou «Resgatar N», com N igual ao custo, em um único botão visível do centro.
+- **Nove travas:** qualquer uma para antes do clique, e cada uma tem diagnóstico próprio.
+- **Aviso antes do clique:** gravado nos dois caminhos. Se falhar, a Mesa não clica.
+- **Sem gasto duplo:** clique sem confirmação em 180 s vira `sem-confirmacao` e não repete.
+
+### Bônus Twitch
+*O resgate acha o Redeem pelo texto quando o seletor dedicado não existe, e não repete um clique que a Twitch não confirmou.*
+
+**Por quê.** Na rodada real de 2026-11-06, às 15:34, a causa anterior foi confirmada: o clique ia num `<p>` fora de botão. O card de 300 abriu o detalhe certo. O Redeem real não tem `data-test-selector`, `data-a-target` nem `aria-label`, e `RequestRewardButton` não existe nessa tela. Por isso o caminho dedicado não achava o botão.
+
+**Exceção autorizada pelo usuário** à regra «só seletores específicos». O Redeem pode ser clicado pelo texto, se estas cinco condições valerem no mesmo poll e de novo logo antes do clique:
+1. o centro é o diálogo com `#channel-points-reward-center-header`;
+2. o detalhe abriu por uma folha nova do título, com retrato;
+3. filtros, cards e botões numéricos da lista estão fora da tela, exceto o botão só com número igual ao saldo lido; qualquer erro na leitura bloqueia;
+4. há um único botão com o custo, novo e visível;
+5. o texto é exatamente «Redeem N» ou «Resgatar N», com N igual ao custo, sem `data-test-selector` nem `data-a-target`.
+
+Nesse caminho a checagem de formato da descrição não vale: ela gasta pontos reais e depende do texto da Twitch. O caminho do seletor dedicado segue igual.
+
+**NOVO**
+- travas `redeem-centro`, `redeem-detalhe`, `redeem-lista`, `redeem-nenhum`, `redeem-varios`, `redeem-velho`, `redeem-oculto`, `redeem-texto` e `redeem-atributo`; todas param com 0 clique.
+- aviso de clique antes do clique, nos dois caminhos; se o aviso falhar, não clica. Falha depois do clique é ignorada: vai ao log como `falha-depois-do-clique`, não conta como falha e não pausa a baía.
+- clique sem confirmação em 180 s vira `sem-confirmacao` e não repete. Essa espera termina com bônus tardio (`confirmado-tardio`), automático desligado, troca de conta ou reinício do app. Não conta como falha nem pausa a baía.
+- diagnóstico `percurso.redeem`, `posClique` e `via` no resultado.
+- log: `clicado-texto`, `confirmado`, `sem-confirmacao`, `falha-depois-do-clique` e `confirmado-tardio`.
+- painel: «aguardando confirmação» para clique feito e a frase de `sem-confirmacao`.
+
+**NÃO MUDOU**
+- seletor dedicado do Redeem, espera de 6 s, `botaoPontos` e a ordem dos passos.
+- a guarda antes do clique de `twitch-dom.js` (`dedicado` e `titulo-visivel`) continua valendo.
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: caminho do Redeem por texto, travas `redeem-*`, `posCliqueDiag` e o aviso antes do clique.
+- `dashboard/src/main/twitch/points.js`: lista de travas, `limparRedeem`, `limparPosClique` e `limparPercurso`.
+- `dashboard/src/main/twitch/controller.js`: aviso, `clicado-texto`, `sem-confirmacao`, `confirmado-tardio`, `falha-depois-do-clique` e o log.
+- `dashboard/src/preload/twitch-page.js`: repasse de `via`, `redeem` e `posClique`; a fiação do `aoClicar` fica aqui.
+- `dashboard/src/renderer/live-bonus.js`: «aguardando confirmação» e a frase de `sem-confirmacao`.
+
+### Testes
+- `npm test` em `dashboard/`: **579** passaram, segundo a contagem conferida pelo tester. Esta documentação não rodou a suíte.
+- `src/main/twitch/erros-log.test.js` tem **10** testes que não entram no `npm test`, porque o script não lista o arquivo.
+- Os testes usam DOM simulado.
+- **Sem teste automatizado:** a fiação do `aoClicar` no preload, a reavaliação síncrona e a exceção isolada na condição 3.
+
+### Não confirmado
+- **Clique real pelo texto:** ainda não aconteceu. Nenhum resgate real concluiu por esse caminho.
+- **Texto real do botão Redeem:** só se conhece pelo print do usuário, não por teste. Não se sabe se o resgate conclui.
+- **Seletor real do Redeem:** o caminho dedicado segue sem confirmação; o Redeem real não tem atributos de seletor.
+
+### Limites conhecidos
+- a trava só existe em memória: reiniciar o app libera um novo clique.
+- um clique não confirmado vale por tipo e por baía.
+- saldo igual ao custo trava em `redeem-varios`.
+- saldo abreviado ou ilegível trava em `redeem-lista`.
+- ordem «300 Redeem» ou texto extra trava em `redeem-texto`.
+- sair da baía antes do aviso de clique chegar é uma janela pequena, sem trava.
+- a exceção isolada na condição 3 (filtros e lista) não tem teste automatizado.
+
+### Problemas conhecidos
+- Próxima rodada real: repetir na Baía 2 e colar a linha `Diag`, o `percurso.redeem` e o resultado (`clicado-texto`, `confirmado` ou `sem-confirmacao`).
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · Redeem da Twitch por texto, com travas e aviso antes do clique**
+
+Resumo: o resgate acha o Redeem pelo texto quando o seletor dedicado não existe, com nove travas antes do clique. Um aviso é gravado antes de cada clique, e um clique sem confirmação não é repetido. O clique real ainda não aconteceu.
+
+**Resgate**
+- [Novo] Redeem por texto. Antes: sem seletor dedicado, o Redeem não era achado. Depois: o botão com «Redeem N» ou «Resgatar N», com N igual ao custo, é clicado se as cinco condições passarem.
+- [Novo] Nove travas: `redeem-centro`, `redeem-detalhe`, `redeem-lista`, `redeem-nenhum`, `redeem-varios`, `redeem-velho`, `redeem-oculto`, `redeem-texto` e `redeem-atributo`. Todas param antes do clique.
+- [Ajuste] A checagem de formato da descrição não vale no caminho por texto.
+
+**Segurança de pontos**
+- [Novo] Aviso antes de cada clique, nos dois caminhos. Antes: sem aviso. Depois: se o aviso falhar, não clica.
+- [Novo] Sem gasto duplo. Antes: sem estado para clique sem confirmação. Depois: sem confirmação em 180 s vira `sem-confirmacao` e não repete.
+- [Ajuste] Falha depois do clique é ignorada. Não conta como falha e não pausa a baía.
+
+**Diagnóstico**
+- [Novo] `percurso.redeem`, `posClique` e `via` no resultado.
+- [Novo] Log com `clicado-texto`, `confirmado`, `sem-confirmacao`, `falha-depois-do-clique` e `confirmado-tardio`.
+
+**Painel**
+- [Novo] «aguardando confirmação» para clique feito e sem confirmação ainda.
+- [Novo] Frase para `sem-confirmacao`: a Twitch não confirmou, e o tipo fica parado até o bônus subir, o automático ser desligado ou a conta trocar.
+
+**Conhecidos**
+- Clique real pelo texto ainda não aconteceu. O texto do botão só é conhecido pelo print do usuário; não se sabe se o resgate conclui.
+- Trava só em memória: reiniciar libera um novo clique. Um clique não confirmado vale por tipo e por baía.
+- Saldo igual ao custo trava em `redeem-varios`; saldo abreviado ou ilegível, em `redeem-lista`; «300 Redeem» ou texto extra, em `redeem-texto`.
+- Sair da baía antes do aviso de clique chegar é uma janela pequena sem trava.
+- Sem teste automatizado: a fiação do `aoClicar` no preload, a reavaliação síncrona e a exceção isolada na condição 3.
+
+## 2026-11-06 — Patch «Vigília» · item por botão real e guarda antes de cada clique no resgate da Twitch
+
+> O resgate só aceita item por título que seja botão de verdade dentro do centro, com o custo no texto desse botão. Card por custo só casa com texto numérico igual ao custo. Antes de cada clique, a Mesa checa se o botão de confirmação ou o título aparecem fora de lugar. Nada disso foi testado na Twitch real.
+
+### Destaques do patch
+- **Item por título exige botão real:** `button` ou `role="button"`, dentro do centro, com o custo no texto depois de tirar o título.
+- **Card por custo só com número:** o texto inteiro do botão precisa ser o custo pedido.
+- **Guarda antes de cada clique:** card ou item só é clicado se as duas checagens passarem.
+- **Diagnóstico de percurso:** o caminho do clique e o que foi recusado vão para o painel e para o log.
+
+### Bônus Twitch
+*O resgate só clica em item que é botão do centro e que mostra o custo pedido.*
+
+**Por quê.** Numa falha real a Mesa clicou em algo que não abria o card. A busca por título aceitava qualquer elemento com `title`. O detalhe também era reconhecido por qualquer folha com o título, mesmo dentro de botão ou de card. Causa provável, não confirmada numa conta real.
+
+- item por título com custo ⇒ precisa ser `button` ou `role="button"`, dentro do centro, e o custo pedido aparece no texto depois de tirar o título
+- item recusado ⇒ a busca segue; o primeiro recusado vai para `rejeitado` no diagnóstico
+- sem custo ⇒ a busca por título é a de antes
+- botão de confirmação ⇒ fica fora da busca por título quando há custo
+- card por custo ⇒ o texto inteiro precisa ser só o número igual ao custo; `Redeem 300` dentro de um detalhe não entra
+- detalhe aberto ⇒ conta só a folha nova do título, fora de botão do centro e fora dos cards; folha que já estava antes do clique não conta
+- guarda antes de cada clique ⇒ bloqueia com `dedicado` se o botão de confirmação está no centro; bloqueia com `titulo-visivel` se o título aparece visível fora de botão e nenhum filtro `reward-filter-*` está visível
+- clique no item que não acontece ⇒ fecha o centro e falha com motivo `outro`, sem clicar em Redeem
+
+**NOVO**
+- diagnóstico `percurso` no resultado de falha: `caminho`, `bloqueio`, `clique`, `rejeitado`, `lista`, `pos`, `folhas`, `escopo`, `candidatos` e `foraDoCentro`
+- `percurso`, `cardClicado` e `totalBotoesCentro` vão também para o log de erros
+- painel: trecho «Percurso» com caminho, bloqueio, clique, item recusado, lista, posição, folhas, escopo e candidatos, em texto curto
+- painel: `sem atributo=N` agrupa, numa contagem só, os botões do centro sem atributo e sem custo
+
+**NÃO MUDOU**
+- seletores, espera de 6 s, `botaoPontos` e a ordem dos passos
+- a decisão de `motivoEscopo` foi separada em `classificarFolhas`, sem mudar as condições
+- as travas do Redeem continuam: dentro do centro, cartão único, escopo com título exato único
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `eBotaoReal`, `itemTemCusto`, `buscarRecompensa` (com custo, `rejeitado`), `classificarFolhas`, `travaDoBotao`, `cardsPorCusto`, `folhasTitulo`, `retratoAntes`, `guardaCard`, `detalheAbriu`, `montarPosicao`, `percursoDe`, `resgatarPorCusto`, `resgatarFluxo`, `resgatar`
+- `dashboard/src/main/twitch/points.js`: `limparPercurso` e os campos novos em `limparResultado`
+- `dashboard/src/main/twitch/controller.js`: repasse de `percurso` ao resultado e ao log
+- `dashboard/src/preload/twitch-page.js`: repasse de `percurso`
+- `dashboard/src/renderer/live-bonus.js`: `liveBonusPercurso` e `sem atributo=N`
+
+### Testes
+- `npm test` em `dashboard/`: **491** passaram, segundo a entrega. Esta documentação não rodou a suíte.
+- `src/main/twitch/erros-log.test.js` tem **10** testes que não entram no `npm test`, porque o script não lista o arquivo.
+- Os testes usam DOM simulado.
+
+### Não confirmado
+- **Seletor real do Redeem:** segue sem confirmação. Nenhum teste rodou contra a Twitch real.
+- **Resgate real:** pode ainda falhar. A próxima rodada real é diagnóstica; ela mostra o percurso, não garante o resgate.
+- **Atributos reais dos botões e dos cards:** não confirmados no DOM da Twitch.
+
+### Limites conhecidos
+- card com texto além do número não entra no caminho por custo
+- botão de confirmação montado e oculto na lista bloqueia o resgate
+- título com custo na mesma folha não aciona a guarda `titulo-visivel`
+- **risco residual (atualizado):** este limite foi tratado na entrada de cima do mesmo dia. Filtros e cards visíveis na lista agora travam em `redeem-lista`, e o Redeem por texto só clica com as cinco condições e o aviso antes do clique. O risco que sobra está listado na entrada de cima.
+
+### Problemas conhecidos
+- Próximo passo: repetir o resgate na Baía 2 e colar a linha `Diag`, a linha de percurso e a linha de falha. O resgate pode falhar de novo.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · item por botão real e guarda antes de cada clique no resgate da Twitch**
+
+Resumo: o resgate aceita item por título só se for botão do centro com o custo no texto, e confere antes de cada clique. O seletor real do Redeem segue sem confirmação.
+
+**Resgate de pontos**
+- [Correção] Item por título. Antes: qualquer elemento com `title` podia ser clicado, e a Mesa clicava às vezes em algo que não abria o card. Depois: só botão real (`button` ou `role="button"`) dentro do centro, com o custo pedido no texto depois de tirar o título.
+- [Correção] Card por custo. Antes: qualquer texto com um número igual ao custo contava, inclusive `Redeem 300` num detalhe. Depois: o texto inteiro precisa ser só o número igual ao custo.
+- [Ajuste] Detalhe aberto. Antes: qualquer folha com o título contava. Depois: só a folha nova do título, fora de botão e fora dos cards.
+- [Novo] Guarda antes de cada clique. Antes: a Mesa clicava sem checar. Depois: não clica se o botão de confirmação estiver no centro, nem se o título estiver visível fora de botão sem filtro `reward-filter-*` visível.
+- [Ajuste] Botão de confirmação fora da busca por título quando há custo. Sem custo, a busca é a mesma de antes.
+- [Correção] Clique no item que não acontece. Antes: a falha seguia e tentava o Redeem mesmo sem clique. Depois: fecha o centro e falha com motivo `outro`, sem Redeem.
+
+**Diagnóstico**
+- [Novo] `percurso` na falha: caminho, bloqueio, clique, item recusado, lista, posição, folhas, escopo, candidatos e itens fora do centro.
+- [Ajuste] `sem atributo=N` agrupa, numa contagem só, os botões do centro sem atributo e sem custo.
+
+**Painel**
+- [Novo] Trecho «Percurso» com os mesmos dados, em texto curto.
+
+**Log de erros**
+- [Novo] `percurso`, `cardClicado` e `totalBotoesCentro` entram no log de cada falha.
+
+**Conhecidos**
+- Seletor real do Redeem não confirmado. Nenhum teste rodou contra a Twitch real. O resgate pode ainda falhar; a próxima rodada real é diagnóstica.
+- Card com texto além do número não entra no caminho por custo.
+- Botão de confirmação montado e oculto na lista bloqueia o resgate.
+- Título com custo na mesma folha não aciona a guarda.
+- Risco residual (atualizado): tratado na entrada de cima do mesmo dia (`redeem-lista`, `redeem-texto` e aviso antes do clique). Os limites atuais estão lá.
+
+## 2026-11-06 — Patch «Vigília» · até 24 botões do centro e card clicado no diagnóstico
+
+> O diagnóstico do `sem-botao` passa a listar até 24 botões do centro, na ordem do DOM, e mostra o card clicado no resgate. Só diagnóstico: o clique não mudou.
+
+### Destaques do patch
+- **24 botões:** o limite sobe de 8 para 24.
+- **Card clicado:** o diagnóstico mostra `dts`, `alvo`, `aria`, custo e desabilitado do card, tirados antes do clique.
+- **Só leitura:** nenhum seletor, clique, espera ou ordem mudou.
+
+### Bônus Twitch
+*O diagnóstico mostra mais botões do centro e o card que foi clicado.*
+
+**Por quê.** Na falha de 14:35 a lista de botões tinha 8 itens, todos cabeçalho e filtros. Faltava ver os botões que vinham depois e qual card foi clicado.
+
+**NOVO**
+- resultado `sem-botao`: até 24 botões do centro, na ordem do DOM
+- `cardClicado`: `dts`, `alvo`, `aria`, custo e desabilitado do card
+- painel: trecho «Card clicado» e lista de botões com até 24 itens; a linha é cortada em 1500 caracteres
+
+**NÃO MUDOU**
+- seletores, clique, espera e ordem
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `BOTOES_CENTRO_MAX` (24) e `cardDiag` do card clicado
+- `dashboard/src/main/twitch/points.js`: `limparBotoesCentro` (24) e `limparCardClicado`
+- `dashboard/src/main/twitch/controller.js`: repasse de `cardClicado` ao resultado
+- `dashboard/src/preload/twitch-page.js`: repasse de `cardClicado`
+- `dashboard/src/renderer/live-bonus.js`: `liveBonusBotoesCentro` e `liveBonusCardClicado`
+
+### Testes
+- Contagem não registrada na época. A atual está na entrada de cima.
+- Arquivos de teste tocados: `points.test.js`, `live-bonus.test.js` e `twitch-dom.test.js`.
+
+### Não confirmado
+- **Seletores do centro e do Redeem:** continuam sem conferência numa conta real.
+- **Card clicado:** o dado mostra o card escolhido antes do clique, não confirma que o clique surtiu efeito.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · até 24 botões do centro e card clicado no diagnóstico**
+
+Resumo: o diagnóstico do `sem-botao` lista até 24 botões do centro e mostra o card clicado. O clique não mudou.
+
+**Twitch / Pontos**
+- [Ajuste] Nenhuma mudança de clique, seletor, espera ou ordem.
+
+**Diagnóstico**
+- [Novo] Até 24 botões do centro, na ordem do DOM (antes: 8).
+- [Novo] `cardClicado` com `dts`, `alvo`, `aria`, custo e desabilitado.
+
+**Painel**
+- [Novo] Trecho «Card clicado» na falha.
+- [Ajuste] Lista de botões com até 24 itens; a linha é cortada em 1500 caracteres.
+
+**Conhecidos**
+- Seletores do centro e do Redeem continuam sem conferência numa conta real.
+
+## 2026-11-06 — Patch «Vigília» · log de erros do resgate da Twitch em arquivo
+
+> Cada falha de resgate e cada pausa por falhas repetidas grava uma linha num arquivo de log. Quando o arquivo passa de 512 KB, ele vai para `twitch-resgate.1.log`. Falha de escrita não derruba o resgate.
+
+### Destaques do patch
+- **Arquivo:** `userData/logs/twitch-resgate.log`, uma linha JSON por evento.
+- **Rotação:** passou de 512 KB, o arquivo vai para `twitch-resgate.1.log` e substitui o anterior.
+- **Sem efeito no resgate:** erro de escrita vira aviso no console e nada mais.
+
+### Bônus Twitch
+*As falhas do resgate ficam guardadas em arquivo, não só no painel.*
+
+**Por quê.** Não havia registro das falhas do resgate fora do painel. Com o arquivo, dá para ler as falhas depois, sem depender do painel estar aberto.
+
+**NOVO**
+- `src/main/twitch/erros-log.js`: `registrarErro`, `lerUltimosErros`, `caminhoPadrao` e limite de 512 KB
+- falha de resgate: uma linha com `baia`, `tipo`, `motivo`, `fase`, `trava`, `clicou` e `detalhe`
+- pausa por falhas repetidas: uma linha `tipo: pausa`, `motivo: falhas-repetidas`, com a hora em que a pausa acaba
+- `detalhe` leva os diagnósticos já sanitizados (vistos, pistas, diálogos, botões, cabeçalho, classes, card clicado e percurso)
+- `index.js` passa o caminho do log ao controller
+
+**NÃO MUDOU**
+- painel, clique e resgate
+- falha de escrita nunca interrompe o resgate
+
+### Arquivos de produto
+- `dashboard/src/main/twitch/erros-log.js` (novo)
+- `dashboard/src/main/twitch/controller.js`: `registrar` e a linha de falha
+- `dashboard/src/main/twitch/index.js`: passa `registrarErro` ao controller
+
+### Testes
+- `src/main/twitch/erros-log.test.js` (novo): **10** testes. Não entram no `npm test`, porque o script não lista o arquivo.
+- `controller.test.js` ganhou testes do repasse ao log.
+
+### Não confirmado
+- **Arquivo real em `userData`:** a rotação e o tamanho em disco não foram vistos numa sessão real da Mesa.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · log de erros do resgate da Twitch em arquivo**
+
+Resumo: as falhas do resgate e as pausas ficam gravadas em `userData/logs/twitch-resgate.log`, com rotação em 512 KB. O resgate não muda.
+
+**Twitch / Pontos**
+- [Novo] Cada falha de resgate e cada pausa por falhas repetidas vira uma linha no log.
+
+**Log de erros**
+- [Novo] Arquivo `twitch-resgate.log`; ao passar de 512 KB, vai para `twitch-resgate.1.log`.
+- [Ajuste] Falha de escrita só gera aviso no console.
+
+**Conhecidos**
+- Rotação e tamanho em disco não confirmados numa sessão real.
+
+## 2026-11-06 — Patch «Vigília» · botões do centro no diagnóstico do sem-botao
+
+> Quando o botão Redeem não é achado, o diagnóstico lista os botões da tela de detalhe do centro. Só leitura: o clique não mudou.
+
+### Destaques do patch
+- **Botões do centro:** até 8 botões, com atributos curtos.
+- **Sinais:** cada botão mostra se tem custo, se é `role=tab` e se está desabilitado.
+- **Total:** o total de botões do centro também sai no diagnóstico.
+
+### Bônus Twitch
+*O diagnóstico mostra os botões do detalhe do centro quando o Redeem não é achado.*
+
+**Por quê.** Na falha de 14:18 o título foi achado, mas o botão Redeem não casou com `RequestRewardButton`. Faltava ver quais botões existiam no detalhe.
+
+**NOVO**
+- resultado `sem-botao`: `botoesCentro` (até 8) e `totalBotoesCentro`
+- cada botão: `data-test-selector`, `data-a-target`, `aria-label`, e se tem custo, `role=tab` ou está desabilitado
+- painel: linha «Botões do centro» na falha `sem-botao`
+
+**NÃO MUDOU**
+- seletores, clique, espera e ordem
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: lista de botões do centro no `sem-botao`
+- `dashboard/src/main/twitch/points.js`: `limparBotoesCentro`
+- `dashboard/src/main/twitch/controller.js`: repasse de `botoesCentro` e `totalBotoesCentro`
+- `dashboard/src/preload/twitch-page.js`: repasse dos campos
+- `dashboard/src/renderer/live-bonus.js`: linha «Botões do centro»
+
+### Testes
+- Contagem não registrada na época. A atual está na entrada de cima.
+- Arquivos de teste tocados: `points.test.js`, `live-bonus.test.js` e `twitch-dom.test.js`.
+
+### Não confirmado
+- **Seletor do Redeem:** o `RequestRewardButton` não casou na falha de 14:18; a causa não foi confirmada.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · botões do centro no diagnóstico do sem-botao**
+
+Resumo: na falha `sem-botao`, o diagnóstico lista os botões do detalhe do centro. O clique não mudou.
+
+**Diagnóstico**
+- [Novo] Até 8 botões do centro com `data-test-selector`, `data-a-target` e `aria-label`.
+- [Novo] Sinais de custo, `role=tab` e desabilitado por botão, e o total de botões.
+
+**Twitch / Pontos**
+- [Ajuste] Nenhuma mudança de clique, seletor, espera ou ordem.
+
+**Conhecidos**
+- Seletor do Redeem não confirmado.
+
 ## 2026-11-06 — Patch «Vigília» · resgate por custo quando a lista mostra só o custo
 
 > Quando a lista do centro mostra só o custo de cada recompensa, a Mesa agora abre os cards desse custo, confere o título no detalhe e só então clica em Redeem. O clique continua protegido pelas mesmas travas.

@@ -43,9 +43,9 @@ describe('sanitizeLivePatch', () => {
     assert.equal('bonus' in oficial, false);
   });
 
-  it('bônus não inteiro ou negativo vira zero', () => {
+  it('bônus com valor que não é inteiro >= 0 recusa o bloco inteiro: o patch não traz bonus', () => {
     const patch = L.sanitizeLivePatch({ twitch: { bonus: { xp: 1.5, captura: -2, shiny: 'x' } } });
-    assert.deepEqual(patch.twitch.bonus, { xp: 0, captura: 0, shiny: 0 });
+    assert.equal('bonus' in patch.twitch, false);
   });
 
   it('pacotes fora de 1..100 saem e no máximo dez passam', () => {
@@ -85,7 +85,9 @@ describe('applyBayPatch', () => {
     let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { login: 'a', bonus: { xp: 5, captura: 0, shiny: 0 } } }), 0);
     bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ completo: true, twitch: { pct: 0 } }), 0);
     assert.equal(bay.twitch.login, '');
+    // Após completo o bloco volta ao zero de sempre, mas sem leitura válida: bonusLido falso protege o resgate.
     assert.equal(bay.twitch.bonus.xp, 0);
+    assert.equal(bay.twitch.bonusLido, false);
     assert.equal(bay.twitch.pct, 0);
   });
 
@@ -126,5 +128,112 @@ describe('toPublicSnapshot', () => {
   it('a Kick de cada baía aparece com pct e minutos', () => {
     const bays = [{ kick: { oficiais: [], pct: 12, minutos: 30 } }];
     assert.deepEqual(L.toPublicSnapshot(bays).bays[0].kick, { pct: 12, minutos: 30 });
+  });
+});
+
+describe('bônus e leitura válida (rodada prazo)', () => {
+  it('frame completo { xp: N } num bloco novo: bonusLido true, captura e shiny zero', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { xp: 5 } } }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+    assert.deepEqual(bay.twitch.bonus, { xp: 5, captura: 0, shiny: 0 });
+  });
+
+  it('frame parcial { xp: N } num bloco novo não vale como leitura: nada prova que captura acabou', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: { xp: 5 } } }), 0);
+    assert.equal(bay.twitch.bonusLido, false);
+    assert.equal(bay.twitch.bonus.xp, 5);
+  });
+
+  it('frame parcial com todos os tipos vale como leitura', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: { xp: 5, captura: 0, shiny: 0 } } }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+  });
+
+  it('depois de uma leitura válida, frame parcial atualiza o prazo e mantém a leitura', () => {
+    let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { xp: 5 } } }), 0);
+    bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { bonus: { xp: 9 } } }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+    assert.equal(bay.twitch.bonus.xp, 9);
+  });
+
+  it('frame sem bonus deixa bonusLido falso', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { login: 'a' } }), 0);
+    assert.equal(bay.twitch.bonusLido, false);
+    assert.equal(bay.twitch.relogioLido, false);
+  });
+
+  it('sanitizar duas vezes não inventa zero e dá o mesmo resultado', () => {
+    const raw = { twitch: { bonus: { xp: 5 } } };
+    const uma = L.sanitizeLivePatch(raw);
+    assert.deepEqual(L.sanitizeLivePatch(uma), uma);
+    assert.deepEqual(uma.twitch.bonus, { xp: 5 });
+  });
+
+  it('{ xp: N } mantém captura e shiny anteriores e a leitura', () => {
+    let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: { xp: 5, captura: 3, shiny: 1 } } }), 0);
+    bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { bonus: { xp: 7 } } }), 0);
+    assert.deepEqual(bay.twitch.bonus, { xp: 7, captura: 3, shiny: 1 });
+    assert.equal(bay.twitch.bonusLido, true);
+  });
+
+  it('valor inválido mantém o anterior e não marca lido', () => {
+    let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: { xp: 5 } } }), 0);
+    bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { bonus: { xp: -1 } } }), 0);
+    assert.equal(bay.twitch.bonus.xp, 5);
+    const fresca = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: { xp: -1 } } }), 0);
+    assert.equal(fresca.twitch.bonusLido, false);
+    assert.deepEqual(fresca.twitch.bonus, { xp: 0, captura: 0, shiny: 0 });
+  });
+
+  it('completo e desligado limpam os dois flags', () => {
+    let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { xp: 5 } }, servidorAgora: 1000 }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+    assert.equal(bay.twitch.relogioLido, true);
+    const completo = L.applyBayPatch(bay, L.sanitizeLivePatch({ completo: true }), 0);
+    assert.equal(completo.twitch.bonusLido, false);
+    assert.equal(completo.twitch.relogioLido, false);
+    bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { bonus: { xp: 5 } }, servidorAgora: 1000 }), 0);
+    const desligado = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { desligado: true } }), 0);
+    assert.equal(desligado.twitch.bonusLido, false);
+    assert.equal(desligado.twitch.relogioLido, false);
+  });
+
+  it('servidorAgora marca relogioLido', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ servidorAgora: 1000 }), 400);
+    assert.equal(bay.twitch.relogioLido, true);
+    assert.equal(bay.offsetMs, 600);
+  });
+});
+
+describe('copyBonusLive: chaves renomeadas não viram leitura válida (correção final)', () => {
+  it('{ outra: 1 } não marca bonusLido e mantém o anterior', () => {
+    let bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { xp: 5 } } }), 0);
+    bay = L.applyBayPatch(bay, L.sanitizeLivePatch({ twitch: { bonus: { outra: 1 } } }), 0);
+    assert.equal(bay.twitch.bonus.xp, 5);
+    assert.equal(bay.twitch.bonusLido, true);
+    const fresca = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { outra: 1 } } }), 0);
+    assert.equal(fresca.twitch.bonusLido, false);
+    assert.equal(fresca.twitch.bonus.xp, 0);
+  });
+
+  it('{ xp: N, outra: 1 } marca e aplica xp; a chave extra não atrapalha', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: { xp: 9, outra: 1 } } }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+    assert.equal(bay.twitch.bonus.xp, 9);
+  });
+
+  it('{} em frame completo marca lido e não inventa tipo; em frame parcial não marca', () => {
+    const bay = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ completo: true, twitch: { bonus: {} } }), 0);
+    assert.equal(bay.twitch.bonusLido, true);
+    assert.equal(bay.twitch.bonus.xp, 0);
+    const parcial = L.applyBayPatch(L.emptyBayLive(), L.sanitizeLivePatch({ twitch: { bonus: {} } }), 0);
+    assert.equal(parcial.twitch.bonusLido, false);
+  });
+
+  it('sanitizar duas vezes segue idempotente com chave extra', () => {
+    const raw = { twitch: { bonus: { xp: 5, outra: 1 } } };
+    const uma = L.sanitizeLivePatch(raw);
+    assert.deepEqual(L.sanitizeLivePatch(uma), uma);
+    assert.deepEqual(uma.twitch.bonus, { xp: 5 });
   });
 });

@@ -31,7 +31,7 @@ function criarEl(tag, cls, txt) {
 }
 
 globalThis.el = criarEl;
-globalThis.cfg = { twitch: { tipos: {}, limiarMin: 5 }, bays: [{}, {}, {}, {}] };
+globalThis.cfg = { twitch: { tipos: {} }, bays: [{}, {}, {}, {}] };
 globalThis.save = () => { estado.salvos += 1; };
 globalThis.window = { mesa: null };
 
@@ -41,7 +41,7 @@ function prepararGlobais() {
   criados.length = 0;
   estado.salvos = 0;
   estado.liveStatus = null;
-  globalThis.cfg = { twitch: { tipos: {}, limiarMin: 5 }, bays: [{}, {}, {}, {}] };
+  globalThis.cfg = { twitch: { tipos: {} }, bays: [{}, {}, {}, {}] };
   globalThis.window = { mesa: null };
 }
 
@@ -500,5 +500,152 @@ describe('mountLiveBonus', () => {
     assert.equal(porClasse('toggle-sm')[0].checked, true);
     const kick = porClasse('live-bonus-kick')[0];
     assert.ok(textos(kick).includes('Exemplo Kick (120)'));
+  });
+});
+
+describe('percurso e botões em branco no painel do resgate', () => {
+  beforeEach(prepararGlobais);
+
+  it('sem-botao: botões sem atributo e sem custo viram sem atributo=N, os demais seguem listados', async () => {
+    const em = Date.now() - 1000;
+    const branco = { dts: '', alvo: '', aria: '', tab: false, custo: false, desab: false };
+    const botoesCentro = [branco, branco, { dts: 'RewardCard', alvo: '', aria: '', tab: false, custo: false, desab: false }];
+    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 3, cardClicado: null };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.match(dd.textContent, /Botões do centro: total=3; RewardCard\|-\|-\|não\|não\|não; sem atributo=2 Card clicado: nenhum$/);
+  });
+
+  it('sem-botao com percurso: linha traz o percurso só como texto, com <b> literal', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const percurso = {
+      caminho: 'titulo',
+      clique: { tag: 'button', role: '', emBotao: true },
+      rejeitado: null,
+      lista: { cards: 2, comCusto: 1 },
+      pos: { centro: true, titulo: false, cardPresente: true, filtros: false, novos: 1 },
+      folhas: { total: 3, titulos: 1, custos: 1, resto: 1, saldo: false },
+      escopo: null,
+      candidatos: [{ dts: '<b>x</b>', alvo: '', aria: '', no: 'div', anc: [{ no: 'section', botoes: 1, titulo: false, resumo: false, dialogo: false }], novo: true, desab: false, trava: 'custo' }],
+      foraDoCentro: 0,
+    };
+    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], percurso };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.ok(dd.textContent.includes('. Percurso: caminho=título; clique=button|-|sim; lista=2 cards, 1 com custo; pos: centro=sim, título=não, card=sim, filtros=não, novos=1; folhas=3 (título=1, custo=1, resto=1, saldo=não); candidatos: <b>x</b>|-|-|div|novo=sim|desab=não|trava=custo (section); fora do centro=0'), dd.textContent);
+    assert.equal(dd.innerHTML, undefined);
+  });
+
+  it('sem-recompensa com item recusado: a linha traz o percurso depois do motivo, sem percurso nenhum quando não há dado', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const percurso = { caminho: '', clique: null, rejeitado: { tag: 'button', role: '', emBotao: true, custo: false, visivel: false }, lista: { cards: 1, comCusto: 0 }, pos: null, folhas: null, escopo: null, candidatos: [], foraDoCentro: 0 };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado({ id: 7, estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [], percurso }));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei a recompensa'));
+    assert.ok(dd, 'linha do sem-recompensa');
+    assert.ok(dd.textContent.includes('não achei a recompensa. Percurso: caminho=-; clique=nenhum; recusado=button|-|botão=sim|custo=não|visível=não; lista=1 cards, 0 com custo; fora do centro=0'), dd.textContent);
+  });
+
+  it('sem-recompensa sem percurso no resultado: a linha não traz a palavra Percurso', async () => {
+    const em = Date.now() - 1000;
+    montar(snap(quatro({ 0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-recompensa', vistos: [] } } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei a recompensa'));
+    assert.ok(dd, 'linha do sem-recompensa');
+    assert.equal(dd.textContent.includes('Percurso'), false);
+  });
+});
+
+describe('bloqueio e sem atributo só para botão comum (rodada 1)', () => {
+  beforeEach(prepararGlobais);
+
+  it('sem atributo=N não agrupa botão com tab nem desabilitado', async () => {
+    const em = Date.now() - 1000;
+    const branco = { dts: '', alvo: '', aria: '', tab: false, custo: false, desab: false };
+    const botoesCentro = [
+      { dts: '', alvo: '', aria: '', tab: true, custo: false, desab: false },
+      { dts: '', alvo: '', aria: '', tab: false, custo: false, desab: true },
+      branco,
+    ];
+    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 3, cardClicado: null };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.match(dd.textContent, /Botões do centro: total=3; -|-|-|sim|não|não; -|-|-|não|não|sim; sem atributo=1 Card clicado: nenhum$/);
+  });
+
+  it('percurso com bloqueio mostra o bloqueio como texto', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const percurso = { caminho: '', bloqueio: 'titulo-visivel', clique: null, rejeitado: null, lista: { cards: 1, comCusto: 1 }, pos: null, folhas: null, escopo: null, candidatos: [], foraDoCentro: 0 };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado({ id: 8, estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [], percurso }));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei a recompensa'));
+    assert.ok(dd, 'linha do sem-recompensa');
+    assert.ok(dd.textContent.includes('Percurso: caminho=-; bloqueio=titulo-visivel; clique=nenhum'), dd.textContent);
+  });
+});
+
+describe('Redeem por texto e frase sem-confirmacao no painel (rodada redeem)', () => {
+  beforeEach(prepararGlobais);
+
+  it('o redeem sai como texto logo depois de caminho= e antes do clique, mesmo com percurso longo', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const longo = Array.from({ length: 3 }, () => ({ dts: 'x'.repeat(40), alvo: 'y'.repeat(40), aria: 'z'.repeat(40), no: 'w'.repeat(40), anc: [{ no: 'q'.repeat(40), botoes: 1, titulo: false, resumo: false, dialogo: false }], novo: true, desab: false, trava: 'custo' }));
+    const percurso = { caminho: 'custo', clique: { tag: 'button', role: '', emBotao: true }, rejeitado: null, lista: { cards: 1, comCusto: 1 }, pos: null, folhas: null, escopo: null, candidatos: longo, foraDoCentro: 0,
+      redeem: { trava: 'redeem-texto', centro: true, detalhe: true, lista: false, unico: true, novo: true, visivel: true, texto: false, atributo: false, comCusto: 1, botao: {}, desc: {} } };
+    const bruto = { id: 9, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'redeem-texto', dialogos: [], percurso };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    const t = dd.textContent;
+    assert.ok(t.includes('redeem=redeem-texto (centro=sim, detalhe=sim, lista=não'), t);
+    assert.ok(t.indexOf('redeem=') < t.indexOf('clique='), 'redeem antes de clique');
+  });
+
+  it('clicado com via texto aparece como aguardando confirmação', async () => {
+    const em = Date.now() - 1000;
+    const ultimo = { tipo: 'xp', em, estado: 'clicado', motivo: 'clicado-texto', clicou: true, via: 'texto' };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    assert.ok(criados.some((n) => n.textContent.includes('clicado às') && n.textContent.includes('aguardando confirmação')));
+  });
+
+  it('situação sem-confirmacao mostra a frase nova como texto', async () => {
+    montar(snap(quatro({ 0: { situacao: 'sem-confirmacao' } })));
+    await esperar();
+    assert.ok(criados.some((n) => n.textContent.includes('Cliquei no resgate e a Twitch não confirmou')));
+    assert.ok(criados.some((n) => n.textContent.includes('Reiniciar a Mesa também libera, mas pode gerar um novo resgate.')));
+  });
+});
+
+describe('painel do prazo: sem limiar e frase sem-leitura (rodada prazo)', () => {
+  beforeEach(prepararGlobais);
+
+  it('o painel não mostra "Resgatar quando faltar" e traz o texto de Recompensas novo', async () => {
+    montar(snap(quatro()));
+    await esperar();
+    assert.equal(criados.some((n) => n.textContent.includes('Resgatar quando faltar')), false);
+    assert.equal(criados.some((n) => n.textContent === 'Resgatar quando faltar'), false);
+    assert.ok(criados.some((n) => n.textContent.includes('A Mesa resgata de novo quando a anterior acabar.')));
+  });
+
+  it('situação sem-leitura mostra a frase como texto', async () => {
+    montar(snap(quatro({ 0: { situacao: 'sem-leitura' } })));
+    await esperar();
+    assert.ok(criados.some((n) => n.textContent.includes('O jogo ainda não mandou o prazo dos bônus. Resgate parado.')));
   });
 });

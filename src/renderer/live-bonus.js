@@ -2,10 +2,9 @@
 const LIVE_BONUS_TIPOS = ['xp', 'captura', 'shiny'];
 const LIVE_BONUS_ROTULO = { xp: 'XP', captura: 'Captura', shiny: 'Shiny' };
 const LIVE_BONUS_CUSTO = { xp: 300, captura: 500, shiny: 1000 };
-const LIVE_BONUS_LIMIARES = [2, 5, 10, 15];
 const LIVE_BONUS_PARADO = new Set([
   'sem-saldo-lido', 'sem-recompensa', 'sem-login-pagina', 'nao-vinculado',
-  'sem-login-jogo', 'conta-diferente', 'pausado', 'sem-ganho', 'erro-baia', 'erro-pagina',
+  'sem-login-jogo', 'conta-diferente', 'pausado', 'sem-ganho', 'erro-baia', 'erro-pagina', 'sem-confirmacao', 'sem-leitura',
 ]);
 const LIVE_BONUS_MOTIVO = {
   'sem-resumo': 'não achei os pontos do canal',
@@ -42,6 +41,8 @@ const LIVE_BONUS_FRASE = {
   'sem-ganho': () => 'Os pontos não sobem nesta baía. Mostre a janela para conferir.',
   'erro-baia': () => 'Esta baía teve um erro interno na Twitch. As outras seguem normalmente.',
   'erro-pagina': () => 'A página da Twitch não carregou. Tento de novo sozinho.',
+  'sem-leitura': () => 'O jogo ainda não mandou o prazo dos bônus. Resgate parado.',
+  'sem-confirmacao': () => 'Cliquei no resgate e a Twitch não confirmou. Este tipo fica parado até o bônus subir, o automático ser desligado ou a conta trocar. Reiniciar a Mesa também libera, mas pode gerar um novo resgate.',
 };
 
 // Dados de pré-visualização para abrir o painel em file:// (sem window.mesa).
@@ -121,8 +122,13 @@ function liveBonusBotoesCentro(ultimo) {
   const sim = (v) => (v === true ? 'sim' : 'não');
   const campo = (v) => (typeof v === 'string' && v ? v : '-');
   const lista = Array.isArray(ultimo.botoesCentro) ? ultimo.botoesCentro.filter((b) => b && typeof b === 'object') : [];
-  const itens = lista.slice(0, LIVE_BONUS_BOTOES_MAX)
+  // Botão sem atributo e sem custo vira só a contagem 'sem atributo=N', para não encher a linha.
+  const vazio = (v) => !(typeof v === 'string' && v);
+  const brancos = lista.filter((b) => vazio(b.dts) && vazio(b.alvo) && vazio(b.aria) && b.custo !== true && b.tab !== true && b.desab !== true);
+  const visiveis = lista.filter((b) => !brancos.includes(b));
+  const itens = visiveis.slice(0, LIVE_BONUS_BOTOES_MAX)
     .map((b) => [campo(b.dts), campo(b.alvo), campo(b.aria), sim(b.tab), sim(b.custo), sim(b.desab)].join('|'));
+  if (brancos.length) itens.push(`sem atributo=${brancos.length}`);
   const total = Number.isFinite(ultimo.totalBotoesCentro) ? ultimo.totalBotoesCentro : 0;
   const linha = ` Botões do centro: total=${total}; ${itens.length ? itens.join('; ') : 'nenhum'}`;
   return linha.length > LIVE_BONUS_LINHA_MAX ? `${linha.slice(0, LIVE_BONUS_LINHA_MAX)}...` : linha;
@@ -138,6 +144,53 @@ function liveBonusCardClicado(ultimo, mostrarNenhum) {
     return ` Card clicado: ${[campo(c.dts), campo(c.alvo), campo(c.aria), sim(c.custo), sim(c.desab)].join('|')}`;
   }
   return mostrarNenhum ? ' Card clicado: nenhum' : '';
+}
+
+// Percurso do resgate: caminho, clique, item recusado, lista, posição, folhas, escopo e candidatos. Só texto curto, sim/não e contagens.
+const LIVE_BONUS_CAMINHO = { titulo: 'título', custo: 'custo' };
+
+// Redeem por texto: trava e booleanos/contagens em texto. Entra logo depois do caminho, antes do corte de 1500.
+function liveBonusRedeem(r) {
+  if (!r || typeof r !== 'object') return '';
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const campo = (v) => (typeof v === 'string' && v ? v : '-');
+  const num = (v) => (Number.isFinite(v) ? v : 0);
+  return `redeem=${campo(r.trava)} (centro=${sim(r.centro)}, detalhe=${sim(r.detalhe)}, lista=${sim(r.lista)}, unico=${sim(r.unico)}, novo=${sim(r.novo)}, visível=${sim(r.visivel)}, texto=${sim(r.texto)}, atributo=${sim(r.atributo)}, comCusto=${num(r.comCusto)})`;
+}
+
+function liveBonusPercurso(ultimo) {
+  const p = ultimo.percurso;
+  if (!p || typeof p !== 'object') return '';
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const campo = (v) => (typeof v === 'string' && v ? v : '-');
+  const numero = (v) => (Number.isFinite(v) ? v : 0);
+  const obj = (v) => (v && typeof v === 'object' ? v : null);
+  const partes = [`caminho=${LIVE_BONUS_CAMINHO[p.caminho] || '-'}`];
+  if (p.redeem && typeof p.redeem === 'object') partes.push(liveBonusRedeem(p.redeem));
+  const clique = obj(p.clique);
+  if (typeof p.bloqueio === 'string' && p.bloqueio) partes.push(`bloqueio=${p.bloqueio}`);
+  partes.push(clique ? `clique=${campo(clique.tag)}|${campo(clique.role)}|${sim(clique.emBotao)}` : 'clique=nenhum');
+  const rej = obj(p.rejeitado);
+  if (rej) partes.push(`recusado=${campo(rej.tag)}|${campo(rej.role)}|botão=${sim(rej.emBotao)}|custo=${sim(rej.custo)}|visível=${sim(rej.visivel)}`);
+  const lista = obj(p.lista);
+  if (lista) partes.push(`lista=${numero(lista.cards)} cards, ${numero(lista.comCusto)} com custo`);
+  const pos = obj(p.pos);
+  if (pos) partes.push(`pos: centro=${sim(pos.centro)}, título=${sim(pos.titulo)}, card=${sim(pos.cardPresente)}, filtros=${sim(pos.filtros)}, novos=${numero(pos.novos)}`);
+  const folhas = obj(p.folhas);
+  if (folhas) partes.push(`folhas=${numero(folhas.total)} (título=${numero(folhas.titulos)}, custo=${numero(folhas.custos)}, resto=${numero(folhas.resto)}, saldo=${sim(folhas.saldo)})`);
+  const escopo = obj(p.escopo);
+  if (escopo) partes.push(`escopo=${campo(escopo.no)}, botões=${numero(escopo.botoes)}, trava=${campo(escopo.trava)}`);
+  const cands = (Array.isArray(p.candidatos) ? p.candidatos : []).filter((c) => c && typeof c === 'object');
+  if (cands.length) {
+    partes.push('candidatos: ' + cands.map((c) => {
+      const anc = (Array.isArray(c.anc) ? c.anc : []).filter((n) => n && typeof n === 'object').map((n) => campo(n.no));
+      const cadeia = anc.length ? ` (${anc.join(' < ')})` : '';
+      return `${campo(c.dts)}|${campo(c.alvo)}|${campo(c.aria)}|${campo(c.no)}|novo=${sim(c.novo)}|desab=${sim(c.desab)}|trava=${campo(c.trava)}${cadeia}`;
+    }).join('; '));
+  }
+  partes.push(`fora do centro=${numero(p.foraDoCentro)}`);
+  const texto = `. Percurso: ${partes.join('; ')}`;
+  return texto.length > LIVE_BONUS_LINHA_MAX ? `${texto.slice(0, LIVE_BONUS_LINHA_MAX)}...` : texto;
 }
 
 // Diálogos do sem-centro: um trecho por diálogo. Strings só entram como texto, nunca como HTML.
@@ -190,10 +243,12 @@ function liveBonusUltimo(ultimo) {
   const nome = LIVE_BONUS_ROTULO[ultimo.tipo] || 'Bônus';
   const hora = liveBonusHora(ultimo.em);
   if (ultimo.estado === 'ok') return `${nome} às ${hora}`;
+  if (ultimo.estado === 'clicado') return `${nome} clicado às ${hora}, aguardando confirmação`;
   if (ultimo.estado === 'falhou') {
     let base = `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
     if (ultimo.motivo === 'sem-botao') {
       base += `, trava=${typeof ultimo.trava === 'string' && ultimo.trava ? ultimo.trava : '-'}`;
+      base += liveBonusPercurso(ultimo);
       const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
       const texto = dialogos ? `${base}. ${dialogos}` : base;
       return texto + liveBonusBotoesCentro(ultimo) + liveBonusCardClicado(ultimo, true);
@@ -206,6 +261,7 @@ function liveBonusUltimo(ultimo) {
       const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
       return dialogos ? `${base}. ${dialogos}` : base;
     }
+    base += liveBonusPercurso(ultimo);
     const vistos = Array.isArray(ultimo.vistos) ? ultimo.vistos.filter((t) => typeof t === 'string' && t) : [];
     const comVistos = vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;
     return comVistos + liveBonusCardClicado(ultimo, false);
@@ -310,7 +366,7 @@ function mountLiveBonus(parent) {
     el('p', 'live-bonus-lead', 'A Mesa assiste a uma live oficial em cada baía e troca os pontos do canal por horas de bônus no jogo. Entre na Twitch uma vez por baía, com a conta vinculada no jogo.'),
   );
 
-  // Recompensas: tipos e limiar de resgate, globais para as quatro baías.
+  // Recompensas: tipos, globais para as quatro baías.
   const tiposBox = el('div', 'live-bonus-tipos');
   const tipoInputs = {};
   const tipoLabels = {};
@@ -329,29 +385,11 @@ function mountLiveBonus(parent) {
     });
     tiposBox.append(label);
   }
-  const limiarGrupo = el('div', 'join live-bonus-limiar');
-  limiarGrupo.setAttribute('role', 'group');
-  limiarGrupo.setAttribute('aria-label', 'Resgatar quando faltar');
-  const limiarBotoes = LIVE_BONUS_LIMIARES.map((n) => {
-    const botao = el('button', 'btn btn-sm join-item', `${n} min`);
-    botao.type = 'button';
-    botao.addEventListener('click', () => {
-      cfg.twitch.limiarMin = n;
-      liveBonusSalvar();
-      paint();
-    });
-    limiarGrupo.append(botao);
-    return { n, botao };
-  });
   const campoTipos = el('div', 'settings-field');
   const textoTipos = el('div', 'settings-field-text');
-  textoTipos.append(el('strong', null, 'Recompensas'), el('p', null, 'Cada uma vale 1 hora de +15%. As horas se somam.'));
+  textoTipos.append(el('strong', null, 'Recompensas'), el('p', null, 'Cada uma vale 1 hora de +15%. A Mesa resgata de novo quando a anterior acabar.'));
   campoTipos.append(textoTipos, tiposBox);
-  const campoLimiar = el('div', 'settings-field');
-  const textoLimiar = el('div', 'settings-field-text');
-  textoLimiar.append(el('strong', null, 'Resgatar quando faltar'), el('p', null, 'Resgata de novo antes de o bônus acabar.'));
-  campoLimiar.append(textoLimiar, limiarGrupo);
-  root.append(campoTipos, campoLimiar);
+  root.append(campoTipos);
   root.append(el('p', 'live-bonus-note', 'Assistindo, uma conta junta cerca de 320 pontos por hora: 10 a cada 5 minutos e o baú de 50 a cada 15. O XP custa 300 por hora.'));
 
   const erro = el('p', 'live-bonus-erro alert alert-soft');
@@ -462,11 +500,6 @@ function mountLiveBonus(parent) {
       const custo = snap && snap.twitch && snap.twitch.custos ? snap.twitch.custos[tipo] : LIVE_BONUS_CUSTO[tipo];
       const texto = `${LIVE_BONUS_ROTULO[tipo]} · ${Number(custo).toLocaleString('pt-BR')} pontos`;
       if (tipoLabels[tipo].textContent !== texto) tipoLabels[tipo].textContent = texto;
-    }
-    for (const { n, botao } of limiarBotoes) {
-      const on = cfg.twitch.limiarMin === n;
-      botao.classList.toggle('btn-active', on);
-      botao.setAttribute('aria-pressed', on ? 'true' : 'false');
     }
   }
 
