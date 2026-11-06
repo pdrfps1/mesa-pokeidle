@@ -106,6 +106,34 @@ describe('erro de carga na janela (A-7, A8)', () => {
   });
 });
 
+describe('lerLogin: erro de leitura do cookie (null) e sem cookie (\'\')', () => {
+  function janelasComCookies(get) {
+    return createTwitchWindows({
+      BrowserWindow: function FakeBrowserWindow() { return {}; },
+      session: { fromPartition: () => ({ cookies: { get } }) },
+      catalog: { twitchPartitions: ['persist:mesa-twitch-1'] },
+      preloadPath: 'preload.js',
+      prepareSession: () => {},
+      shell: {},
+      openOutside: () => {},
+      querManter: () => false,
+      aoEsconder: () => {},
+      aoFechar: () => {},
+      aoErroPagina: () => {},
+    });
+  }
+
+  it('erro em cookies.get devolve null', async () => {
+    const janelas = janelasComCookies(() => Promise.reject(new Error('cookie travado')));
+    assert.equal(await janelas.lerLogin(0), null);
+  });
+
+  it('sem cookie devolve string vazia', async () => {
+    const janelas = janelasComCookies(() => Promise.resolve([]));
+    assert.equal(await janelas.lerLogin(0), '');
+  });
+});
+
 describe('bloqueio de subframe pela janela (O-1)', () => {
   it('frame principal para fora não é bloqueado aqui (fica com will-navigate)', () => {
     assert.equal(bloqueiaSubframe({ url: 'https://evil.com', isMainFrame: true, isSameDocument: false }), false);

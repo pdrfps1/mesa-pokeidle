@@ -177,7 +177,7 @@ describe('liveBonusDica', () => {
   it('falhou com motivo pending mantém a frase de sempre e não menciona o interruptor', () => {
     const agora = Date.now();
     const nav = { estado: 'falhou', motivo: 'pending', em: agora };
-    const esperado = 'O login no navegador ainda não terminou. Entre na Twitch, feche o navegador e clique em «Já entrei».';
+    const esperado = 'Ainda não há login nessa janela. Entre na Twitch nela, feche-a e clique em «Já entrei».';
     const comAuto = LB.liveBonusDica(nav, agora, true);
     const semAuto = LB.liveBonusDica(nav, agora, false);
     assert.equal(comAuto.texto, esperado);
@@ -185,6 +185,47 @@ describe('liveBonusDica', () => {
     assert.equal(comAuto.texto.includes('sozinho'), false);
     assert.equal(comAuto.texto.includes('ligado'), false);
     assert.equal(comAuto.parado, false);
+  });
+
+  it('falhou com motivo leitura-falhou: frase de leitura e parado true', () => {
+    const agora = Date.now();
+    const nav = { estado: 'falhou', motivo: 'leitura-falhou', em: agora };
+    const dica = LB.liveBonusDica(nav, agora, false);
+    assert.equal(dica.texto, 'Não consegui ler o navegador desta baía. Feche todas as janelas dele e clique em «Já entrei».');
+    assert.equal(dica.parado, true);
+  });
+
+  it('aberto diz que é a janela que a Mesa abriu', () => {
+    const agora = Date.now();
+    const dica = LB.liveBonusDica({ estado: 'aberto', motivo: '', em: agora }, agora, false);
+    assert.equal(dica.texto.includes('nesta janela que abriu'), true);
+  });
+});
+
+describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
+  beforeEach(prepararGlobais);
+
+  it('falha com vistos mostra o motivo e "Vi:" com os títulos, só em textContent', async () => {
+    const em = Date.now() - 1000;
+    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-recompensa', vistos: ['Hidratar 300', 'Bônus XP Plus 500'] };
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('falhou'));
+    assert.ok(dd, 'linha do último resgate');
+    assert.match(dd.textContent, /não achei a recompensa\. Vi: Hidratar 300, Bônus XP Plus 500$/);
+  });
+
+  it('motivo sem-centro e recompensa-ambigua têm rótulo próprio', async () => {
+    const em = Date.now() - 1000;
+    montar(snap(quatro({
+      0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [] } },
+      1: { ultimo: { tipo: 'captura', em, estado: 'falhou', motivo: 'recompensa-ambigua', vistos: [] } },
+    })));
+    await esperar();
+    assert.ok(criados.some((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas')));
+    const ambigua = criados.find((n) => n.tag === 'dd' && n.textContent.includes('mais de uma recompensa'));
+    assert.ok(ambigua, 'rótulo da recompensa ambígua');
+    assert.equal(ambigua.textContent.includes('Vi:'), false);
   });
 });
 

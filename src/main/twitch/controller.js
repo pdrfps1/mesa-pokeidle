@@ -314,10 +314,11 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  // Só um login válido diferente do último válido troca de conta (O-2). Vazio ou inválido não zera nada:
-  // uma leitura falha de cookie no meio de um resgate não pode reabrir o pendente.
+  // Só um login válido diferente do último válido troca de conta (O-2). null (leitura falhou) não muda nada e não avisa.
+  // Vazio ou inválido zera a conta da baía, sem apagar o último login válido.
   function setLoginTwitch(i, login) {
     const b = bays[i];
+    if (login === null) return;
     if (P.loginValido(login)) {
       const nova = login.trim().toLowerCase();
       if (b.ultimoLoginValido && b.ultimoLoginValido !== nova) {
@@ -338,7 +339,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo }) {
+  function resultado(i, { id, estado, motivo, vistos }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -347,7 +348,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     }
     if (estado === 'falhou') {
       const t = agora();
-      b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'falhou', motivo };
+      b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'falhou', motivo, vistos: Array.isArray(vistos) ? vistos : [] };
       b.falhas = P.registrarFalha(b.falhas, b.pendente.tipo, t);
       b.pendente = null;
       b.ultimoResgateEm = t;

@@ -21,9 +21,10 @@ var MESA_TWITCH_DOM = (function () {
       'button[aria-label="Resgatar bônus"]',
       'button[aria-label="Resgatar Bônus"]',
     ],
-    centro: ['#channel-points-reward-center-body', '[data-test-selector="reward-center"]', '.reward-center-body', '[role="dialog"]'],
+    centro: ['#channel-points-reward-center-body', '[data-test-selector="reward-center"]', '.reward-center-body'],
     resgatar: ['[data-test-selector="RequestRewardButton"]'],
-    campoTexto: ['#channel-points-reward-center-body textarea', '[role="dialog"] textarea'],
+    // Campo de texto procurado dentro do centro achado.
+    campoTexto: ['textarea'],
   };
 
   function primeiro(root, lista) {
@@ -44,8 +45,10 @@ var MESA_TWITCH_DOM = (function () {
     return limpa(el ? el.textContent : '');
   }
 
+  // NFKC junta acento decomposto (NFD) e zero-width some antes de comparar.
   function normal(s) {
-    return limpa(s).toLowerCase();
+    const semLarguraZero = String(s == null ? '' : s).normalize('NFKC').replace(/[​-‍﻿]/g, '');
+    return limpa(semLarguraZero).toLowerCase();
   }
 
   function digitos(s) {
@@ -117,25 +120,34 @@ var MESA_TWITCH_DOM = (function () {
     };
   }
 
-  // Quem casa com o texto é um botão. Vários candidatos iguais ou parciais: não clica em nenhum.
-  function unicoOuNulo(lista) {
-    return lista.length === 1 ? lista[0] : null;
+  // Candidatos aninhados: fica o mais interno (o que não contém outro candidato da lista).
+  function maisInternos(lista) {
+    return lista.filter((c) => !lista.some((outro) => outro !== c && dentroDe(outro, c)));
   }
 
-  // Igualdade normalizada primeiro, no texto ou no title (A-4). Só cai na contenção com um candidato único.
-  function acharRecompensa(doc, titulo) {
+  // Igualdade normalizada primeiro, no texto ou no title (A-4). Sem igualdade, contenção com candidatos aninhados
+  // reduzidos ao mais interno. Mais de um candidato disjunto: ambigua, e nada é clicado.
+  function buscarRecompensa(doc, titulo, centroDado) {
     const alvo = normal(titulo);
-    if (!alvo) return null;
-    const centro = primeiro(doc, SELETORES.centro);
-    const raiz = centro || doc;
+    if (!alvo) return { achado: null, ambigua: false };
+    // Centro passado como null (sumiu): não procura em nada. Sem terceiro argumento, cai no centro
+    // específico e, na falta dele, no documento inteiro. Produção sempre passa o centro; o fallback é só da API exportada.
+    if (centroDado === null) return { achado: null, ambigua: false };
+    const raiz = centroDado || primeiro(doc, SELETORES.centro) || doc;
     const botoes = Array.from(raiz.querySelectorAll('button,[role="button"]'));
     const titulosExatos = Array.from(raiz.querySelectorAll('[title]'))
       .filter((el) => normal(el.getAttribute('title')) === alvo)
-      .map(botaoDe);
-    const iguais = new Set([...botoes.filter((el) => normal(textoDe(el)) === alvo), ...titulosExatos]);
-    if (iguais.size) return iguais.size === 1 ? Array.from(iguais)[0] : null;
-    const parciais = botoes.filter((el) => normal(textoDe(el)).includes(alvo));
-    return unicoOuNulo(parciais);
+      .map(botaoDe)
+      .filter((el) => dentroDe(el, raiz));
+    const iguais = maisInternos([...new Set([...botoes.filter((el) => normal(textoDe(el)) === alvo), ...titulosExatos])]);
+    if (iguais.length) return { achado: iguais.length === 1 ? iguais[0] : null, ambigua: iguais.length > 1 };
+    const parciais = maisInternos(botoes.filter((el) => normal(textoDe(el)).includes(alvo)));
+    if (parciais.length === 1) return { achado: parciais[0], ambigua: false };
+    return { achado: null, ambigua: parciais.length > 1 };
+  }
+
+  function acharRecompensa(doc, titulo, centroDado) {
+    return buscarRecompensa(doc, titulo, centroDado).achado;
   }
 
   // Números do texto, com separador de milhar ("1.000" vira 1000).
@@ -231,8 +243,8 @@ var MESA_TWITCH_DOM = (function () {
 
   // Só o seletor dedicado, dentro do centro. Se ele está num cartão, o cartão decide. Se não, o centro
   // inteiro tem de mostrar uma recompensa só (O-3). Na dúvida, nada é clicado.
-  function acharBotaoResgatar(doc, custo, titulo) {
-    const centro = primeiro(doc, SELETORES.centro);
+  function acharBotaoResgatar(doc, custo, titulo, centroDado) {
+    const centro = centroDado || primeiro(doc, SELETORES.centro);
     const dedicado = primeiro(doc, SELETORES.resgatar);
     const alvo = normal(titulo);
     if (!dedicado || !centro || !alvo || dedicado === centro || !dentroDe(dedicado, centro)) return null;
@@ -266,8 +278,22 @@ var MESA_TWITCH_DOM = (function () {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
+  // Centro: só pelos seletores específicos. Diálogo genérico nunca é centro, mesmo com a recompensa dentro.
+  function centroAberto(doc) {
+    return primeiro(doc, SELETORES.centro);
+  }
+
+  // Títulos dos cartões do centro, só texto, até 8 itens de 45 caracteres. Diagnóstico do painel.
+  function titulosVistos(centro) {
+    if (!centro) return [];
+    const textos = Array.from(centro.querySelectorAll('button,[role="button"]'))
+      .map((el) => limpa(textoDe(el)).slice(0, 45))
+      .filter(Boolean);
+    return Array.from(new Set(textos)).slice(0, 8);
+  }
+
   async function fecharCentro(doc, deps) {
-    if (!primeiro(doc, SELETORES.centro)) return;
+    if (!centroAberto(doc)) return;
     const botao = primeiro(doc, SELETORES.botaoPontos);
     if (!botao) return;
     clicar(botao);
@@ -278,11 +304,21 @@ var MESA_TWITCH_DOM = (function () {
   async function resgatar(doc, pedido, deps) {
     const resumo = primeiro(doc, SELETORES.botaoPontos);
     if (!resumo) return { estado: 'falhou', motivo: 'sem-resumo' };
-    if (!primeiro(doc, SELETORES.centro)) clicar(resumo);
-    const item = await deps.esperar(() => acharRecompensa(doc, pedido.titulo), 6000);
+    const achaCentro = () => centroAberto(doc);
+    if (!achaCentro()) clicar(resumo);
+    const centro = await deps.esperar(achaCentro, 6000);
+    if (!centro) return { estado: 'falhou', motivo: 'sem-centro' };
+    let busca = { achado: null, ambigua: false };
+    await deps.esperar(() => {
+      busca = buscarRecompensa(doc, pedido.titulo, achaCentro());
+      return busca.achado;
+    }, 6000);
+    if (!achaCentro()) return { estado: 'falhou', motivo: 'sem-centro' };
+    const item = busca.achado;
     if (!item) {
+      const vistos = titulosVistos(achaCentro());
       await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: 'sem-recompensa' };
+      return { estado: 'falhou', motivo: busca.ambigua ? 'recompensa-ambigua' : 'sem-recompensa', vistos };
     }
     if (desabilitado(item)) {
       await fecharCentro(doc, deps);
@@ -290,11 +326,13 @@ var MESA_TWITCH_DOM = (function () {
     }
     clicar(item);
     await deps.pausa(600);
-    if (primeiro(doc, SELETORES.campoTexto)) {
+    const aberto = achaCentro();
+    if (!aberto) return { estado: 'falhou', motivo: 'sem-centro' };
+    if (primeiro(aberto, SELETORES.campoTexto)) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'pede-texto' };
     }
-    const botao = await deps.esperar(() => acharBotaoResgatar(doc, pedido.custo, pedido.titulo), 5000);
+    const botao = await deps.esperar(() => acharBotaoResgatar(doc, pedido.custo, pedido.titulo, achaCentro()), 5000);
     if (!botao) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'sem-botao' };

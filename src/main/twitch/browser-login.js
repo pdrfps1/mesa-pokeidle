@@ -69,7 +69,8 @@ async function lerSessaoTwitch({ base, browserWsUrl }) {
   }
   const filtrados = filtrarCookiesTwitch(cookies);
   const login = loginDosCookies(filtrados);
-  return login ? { cookies: filtrados, login } : null;
+  // Cookies lidos, mas sem login válido: semSessao, para não se confundir com falha de leitura.
+  return login ? { cookies: filtrados, login } : { semSessao: true };
 }
 
 // vigente() diz se o pedido ainda vale (a baía não saiu nem foi trocada). Sem ele, a cópia não acontece.
@@ -83,9 +84,15 @@ async function importarSessaoTwitch({
   const part = catalog.twitchPartitions[i];
   const perfil = loginProfileDir(raiz, part);
   if (isLoginBrowserRunning(perfil)) return { ok: false, reason: 'browser-open' };
-  const sessao = await lerPerfil(browserExe, perfil, lerSessaoTwitch).catch(() => null);
+  const sessao = await lerPerfil(browserExe, perfil, lerSessaoTwitch).catch((err) => {
+    // Só o nome do erro: nunca cookie ou valor de sessão.
+    console.warn('[twitch-login] leitura do perfil falhou:', err && err.name);
+    return null;
+  });
   if (!vigente()) return { ok: false, reason: 'cancelado' };
-  if (!sessao) return { ok: false, reason: 'pending' };
+  // Leitura que falhou (null ou erro) é diferente de perfil sem login (semSessao → pending).
+  if (!sessao) return { ok: false, reason: 'leitura-falhou' };
+  if (sessao.semSessao) return { ok: false, reason: 'pending' };
   const ses = session.fromPartition(part);
   return naFila(async () => {
     if (!vigente()) return { ok: false, reason: 'cancelado' };

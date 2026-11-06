@@ -295,11 +295,25 @@ describe('limparFatos e limparResultado', () => {
   });
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro' });
-    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel' });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', vistos: [] });
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', vistos: [] });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
     assert.equal(P.limparResultado({ id: '5', estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 0, estado: 'clicado' }), null);
     assert.equal(P.limparResultado({ id: 5, estado: 'desconhecido' }), null);
+  });
+
+  it('motivos novos do centro passam como estão', () => {
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro' }).motivo, 'sem-centro');
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'recompensa-ambigua' }).motivo, 'recompensa-ambigua');
+  });
+
+  it('vistos: array de texto, controle removido, até 8 itens de 45 caracteres', () => {
+    const muitos = Array.from({ length: 12 }, (_, i) => `Cartão ${i}`);
+    const r = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-recompensa', vistos: ['A\u0007B', 42, null, '', 'x'.repeat(60), ...muitos] });
+    assert.equal(r.vistos.length, 8);
+    assert.equal(r.vistos[0], 'AB');
+    assert.equal(r.vistos[1], 'x'.repeat(45));
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', vistos: 'nao' }).vistos, []);
   });
 });

@@ -1,5 +1,84 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · resgate da Twitch com centro aberto
+
+> O resgate de XP parava em «não achei a recompensa» porque a Mesa confundia qualquer diálogo aberto na página com o centro de recompensas. Agora o centro só é reconhecido quando é o centro de verdade, e a falha diz em que ponto parou.
+
+### Destaques do patch
+- **Centro de recompensas certo:** só seletores específicos liberam clique. Diálogo genérico (`[role="dialog"]`) nunca é usado como centro, nem quando contém a recompensa.
+- **Título que bate:** a comparação normaliza acento decomposto (NFKC) e caracteres invisíveis, e aceita botão aninhado.
+- **Falha com motivo claro:** `sem-centro` e `recompensa-ambigua` ganham frase própria, e o painel mostra os títulos vistos.
+
+### Bônus Twitch
+*O resgate só clica quando a recompensa certa está no centro certo.*
+
+**Por quê.** Qualquer `[role="dialog"]` da página fazia a Mesa achar que o centro já estava aberto e pular o clique no botão de pontos. Com isso, a recompensa não aparecia no centro e o resgate falhava como `sem-recompensa`. Causa provável, não confirmada numa conta real.
+
+- qualquer `[role="dialog"]` aberto ⇒ centro reconhecido e clique no botão de pontos pulado (causa provável)
+- agora ⇒ centro só por seletores específicos; diálogo genérico nunca é centro, nem quando contém a recompensa
+- candidatos disjuntos com o mesmo título ⇒ `recompensa-ambigua`, sem clique
+- item fora do centro ⇒ nunca é clicado
+- centro que some durante a espera ⇒ nada é clicado e a falha vira `sem-centro`
+- título: comparação com NFKC, caracteres invisíveis removidos e botão aninhado tratado (a comparação anterior era estrita demais)
+
+**NOVO**
+- motivo `sem-centro`: «não abriu a lista de recompensas»
+- motivo `recompensa-ambigua`: «mais de uma recompensa com esse nome»
+- "Vi: …" no painel, com até 8 títulos vistos, de até 45 caracteres cada, só texto (sem dado pessoal)
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: reconhecimento do centro, comparação de título, `sem-centro` e `recompensa-ambigua`
+- `dashboard/src/main/twitch/points.js`: lista de motivos da página e limpeza dos títulos vistos (até 8)
+- `dashboard/src/main/twitch/controller.js`: repasse dos motivos novos ao painel
+- `dashboard/src/renderer/live-bonus.js`: frases dos motivos novos e linha "Vi: …"
+
+### Testes
+- `npm test` em `dashboard/`: **342** passaram na última execução.
+- Cobertura nos arquivos de teste: `twitch-dom.test.js` (centro, diálogos e títulos), `points.test.js` (motivos e títulos vistos), `controller.test.js` e `live-bonus.test.js` (frases e "Vi: …").
+
+### Não confirmado
+- **Twitch real:** os seletores e o tempo de espera do centro só se confirmam num resgate real. Sem conta real, o comportamento contra a Twitch não foi visto.
+- **Calibração:** a regra de centro aberto depende do primeiro teste real. Se o centro verdadeiro não casar com os seletores, a falha aparece como `sem-centro` e não como clique errado.
+
+## 2026-11-05 — Patch «Vigília» · login da Twitch por baía
+
+> O login da Twitch ficou mais claro: quando não dá para copiar a conta, a Mesa diz se é falta de login ou falha de leitura, e uma leitura que falha de repente não apaga mais o login da baía.
+
+### Destaques do patch
+- **«Sem login» e «falha de leitura» separados:** cada caso tem mensagem própria e pede uma ação diferente.
+- **Login da baía que não some sozinho:** uma leitura momentânea que falha não zera mais a conta já lida naquela baía.
+- **Mensagens por motivo:** `pending`, `leitura-falhou` e `browser-open` dizem o que fazer em seguida.
+
+### Bônus Twitch
+*O login da baía fica guardado mesmo quando uma leitura falha uma vez.*
+
+**Por quê.** A leitura do perfil de login podia falhar por um instante, e a conta da baía era zerada junto, como se o usuário tivesse saído da Twitch.
+
+- leitura que devolve `null` ou dá erro ⇒ a conta da baía fica como estava
+- perfil lido sem login válido ⇒ situação `sem-login` («Entre na Twitch nesta baía…»), não «falha de leitura»
+- janela de login ainda aberta ⇒ a Mesa pede para fechá-la antes de «Já entrei»
+
+### Login pelo navegador
+*Cada motivo de falha traz a frase e a ação certas.*
+
+**Por quê.** Uma única mensagem genérica não dizia se faltava entrar na Twitch, se o navegador travava a leitura ou se a janela ainda estava aberta.
+
+- **`pending`:** «Ainda não há login nessa janela. Entre na Twitch nela, feche-a e clique em «Já entrei».». Pede entrar na Twitch nessa janela, fechá-la e clicar em «Já entrei». O navegador de sempre e a conta do Edge não contam.
+- **`leitura-falhou`:** «Não consegui ler o navegador desta baía…». Pede fechar todas as janelas desse navegador e clicar em «Já entrei».
+- **`browser-open`:** «Feche a janela do navegador de login desta baía…». Pede fechá-la antes de «Já entrei».
+- **Login copiado:** a frase de sucesso continua; com o interruptor da baía, avisa que «Assistir e resgatar sozinho» ficou ligado.
+- O perfil de login é isolado por baía (`%AppData%\Mesa\login\mesa-twitch-N`). A conta Microsoft ou Google do Edge ou do Chrome não entra nele.
+
+### Arquivos de produto
+- `dashboard/src/main/twitch/browser-login.js`: separa `pending` (sem login válido) de `leitura-falhou` (leitura com `null` ou erro)
+- `dashboard/src/main/twitch/windows.js`: leitura do cookie `login` devolve `null` em erro, sem zerar a conta
+- `dashboard/src/main/twitch/controller.js`: `setLoginTwitch` ignora a leitura `null` e mantém a conta da baía
+- `dashboard/src/renderer/live-bonus.js`: mensagens novas para `pending`, `leitura-falhou` e `browser-open`
+
+### Testes
+- `npm test` em `dashboard/`: **323** passaram, segundo a entrega. Esta documentação não rodou a suíte de novo.
+- Cobertura nos arquivos de teste: `browser-login.test.js` (motivos `browser-open`, `pending` e `leitura-falhou`, incluindo leitura que rejeita), `controller.test.js`, `windows.test.js` e `live-bonus.test.js` (frases de `pending` e `leitura-falhou`).
+
 ## 2026-11-04 — Patch «Vigília» · pontos da Twitch
 
 > A Twitch deixa o chat de lado: cada baía assiste a uma live oficial numa janela escondida e resgata a recompensa de 1 hora com os pontos do canal.

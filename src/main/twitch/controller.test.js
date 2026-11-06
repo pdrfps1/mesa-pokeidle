@@ -362,6 +362,15 @@ describe('controller: resgate', () => {
     assert.equal(snap.ultimo.motivo, 'indisponivel');
   });
 
+  it('vistos do resultado de falha vão para o último resgate', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'sem-recompensa', vistos: ['Hidratar 300'] });
+    assert.deepEqual(ctx.c.snapshot().bays[0].ultimo.vistos, ['Hidratar 300']);
+    assert.equal(ctx.c.snapshot().bays[0].ultimo.motivo, 'sem-recompensa');
+  });
+
   it('o resultado de clique ("clicado") não confirma o bônus', () => {
     const ctx = montar();
     abrir(ctx);
@@ -440,6 +449,24 @@ describe('controller: sair e login', () => {
     ctx.c.setJogo(0, { ativo: true, twitch: bloco({ login: 'beltrano' }), offsetMs: 0 });
     correr(ctx, TICK_MS, {});
     assert.equal(resgates(ctx).length, 2);
+  });
+});
+
+describe('controller: leitura de login (null, vazio)', () => {
+  it('setLoginTwitch com null (leitura falhou) mantém o login anterior e não avisa', () => {
+    const ctx = montar();
+    ctx.c.setLoginTwitch(0, 'Fulano');
+    const antes = ctx.mudancas;
+    ctx.c.setLoginTwitch(0, null);
+    assert.equal(ctx.c.snapshot().bays[0].loginTwitch, 'fulano');
+    assert.equal(ctx.mudancas, antes);
+  });
+
+  it('setLoginTwitch com string vazia zera a conta', () => {
+    const ctx = montar();
+    ctx.c.setLoginTwitch(0, 'Fulano');
+    ctx.c.setLoginTwitch(0, '');
+    assert.equal(ctx.c.snapshot().bays[0].loginTwitch, '');
   });
 });
 

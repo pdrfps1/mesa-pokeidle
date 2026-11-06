@@ -6,6 +6,18 @@ A pasta `tools-analysis/` no repositório é referência de terceiros; não faz 
 
 **Bônus Twitch (`src/main/twitch/`).** Cada baía tem uma janela escondida da Twitch (`BrowserWindow` de 1280×800, sem som, em 160p) na partição `persist:mesa-twitch-1..4`. O preload `twitch-preload.js` é gerado em `%AppData%\Mesa` a partir de `src/shared/twitch-dom.js` e `src/preload/twitch-page.js`. `points.js` tem a lógica pura; `controller.js` decide por baía, com relógio e janelas injetados; `windows.js` cria as janelas; `index.js` registra o IPC (`twitch:pagina`, `twitch:entrar`, `twitch:mostrar`, `twitch:sair`). O login usa `browser-login.js` e `login-reader.js`, que reaproveitam `src/main/browser/profile-login.js`, compartilhado com o login do jogo; o perfil fica em `%AppData%\Mesa\login\mesa-twitch-N` (o do jogo é `login\mesa-N`). `src/main/live/service.js` só recebe os frames do jogo (`live:frame`) e cuida da Kick. Fluxo: o jogo manda o bloco `twitch` no frame → `live:frame` → controller → janela da baía → `twitch:pagina` (fatos e resultado) de volta ao controller, que envia `twitch:comando` (portão, play, baú, resgatar).
 
+**Login da Twitch por baía.** Cada baía entra na Twitch num perfil próprio do navegador, em `%AppData%\Mesa\login\mesa-twitch-N`, separado do navegador de sempre. Por isso a conta Microsoft ou Google sincronizada no Edge ou no Chrome não leva o login da Twitch para a Mesa: é preciso entrar na Twitch dentro da janela de login que a Mesa abre para aquela baía. O login só conta depois de concluído nessa janela; o botão «Já entrei» pede a leitura do perfil e copia os cookies de `twitch.tv` para a partição da baía. Quando a leitura não conclui, a Mesa mostra um motivo e pede uma ação ao usuário (a frase fica em `live-bonus.js`, `LIVE_BONUS_NAVEGADOR`):
+
+- `pending`: o login ainda não foi feito na janela que a Mesa abriu. Pede entrar na Twitch nessa janela, fechá-la e clicar em «Já entrei». O navegador de sempre e a conta do Edge não contam.
+- `leitura-falhou`: a Mesa não conseguiu ler o perfil de login da baía. Pede fechar todas as janelas desse navegador e clicar em «Já entrei».
+- `browser-open`: a janela do navegador de login da baía ainda está aberta. Pede fechá-la antes de clicar em «Já entrei».
+
+A separação vem de `browser-login.js`: `pending` é perfil lido sem login válido; `leitura-falhou` é leitura que devolveu `null` ou erro. Uma falha momentânea na leitura do cookie não zera mais o login da baía: `controller.js` (`setLoginTwitch`) ignora a leitura `null` e mantém a conta já lida.
+
+Os pontos saem de a Mesa assistir à live do canal numa janela oculta da Twitch (o `controller.js` manda a janela para a URL do canal, e `windows.js` cria e esconde a janela), e não pelo chat.
+
+O resgate só clica no botão de confirmar quando o centro de recompensas está aberto de verdade: só seletores específicos liberam clique; diálogo genérico nunca é usado como centro, nem quando contém a recompensa. Os motivos novos são `sem-centro` (a lista não abriu) e `recompensa-ambigua` (mais de uma recompensa com o título, sem clique); o painel mostra «Vi: …» com os títulos vistos. Os seletores do centro ainda não foram confirmados numa conta real.
+
 ## Três telas
 
 Navegação por **dock** DaisyUI (`nav.dock`) na **faixa inferior** da janela, dentro da grade `.app` (`grid-template-rows: minmax(0, 1fr) auto` em `app.css`): **conteúdo** (`.canvas`, linha 1) e **dock** (linha 2). O dock usa **`position: static`** — não flutua (`fixed`) por cima do jogo. Três botões **Mesa**, **Espera** e **Ajustes** com ícones outline de traço (`icons.js`) **e** rótulo visível (`.dock-label`); tela ativa com **`dock-active`** (estilo DaisyUI). Sem coração, sem desligar o app; a função **`mesaLogoSvg()`** (`icons.js`) **não** entra no dock. `<nav>` com `aria-label` «Mesa». Em janelas estreitas (`max-width: 700px`), o dock **permanece** no rodapé como bandeja de 52px, sem régua, com placa deslizante sob a aba ativa; **não há** trilho lateral nem botão «Recolher trilho» na UI — `cfg.chrome.railExpanded` ainda persiste em `mesa-config.json` (`shell-fold.js` só reage se `ui.railFoldBtn` existir). **Escuro** / **Claro** da casca (`shellTheme`) ficam só em Ajustes → **Preferências de Aparência** → **Tema**.
@@ -62,7 +74,7 @@ npm install
 npm start
 ```
 
-`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 309 passando em 2026-11-05). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
+`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 342 passando em 2026-11-06). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
 
 Instalação guiada no Windows: scripts `instalar.cmd` / `instalar.ps1` na raiz do repositório (ver `README.md`).
 

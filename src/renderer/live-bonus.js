@@ -16,6 +16,8 @@ const LIVE_BONUS_MOTIVO = {
   tempo: 'a página demorou',
   ocupado: 'outro resgate em andamento',
   outro: 'erro na página',
+  'sem-centro': 'não abriu a lista de recompensas',
+  'recompensa-ambigua': 'mais de uma recompensa com esse nome',
 };
 const LIVE_BONUS_FRASE = {
   desligado: () => 'Desligado.',
@@ -116,7 +118,9 @@ function liveBonusUltimo(ultimo) {
   const hora = liveBonusHora(ultimo.em);
   if (ultimo.estado === 'ok') return `${nome} às ${hora}`;
   if (ultimo.estado === 'falhou') {
-    return `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
+    const base = `${nome} falhou às ${hora}: ${LIVE_BONUS_MOTIVO[ultimo.motivo] || LIVE_BONUS_MOTIVO.outro}`;
+    const vistos = Array.isArray(ultimo.vistos) ? ultimo.vistos.filter((t) => typeof t === 'string' && t) : [];
+    return vistos.length ? `${base}. Vi: ${vistos.join(', ')}` : base;
   }
   return `${nome} sem confirmação do jogo às ${hora}`;
 }
@@ -144,12 +148,13 @@ function liveBonusFrase(bay) {
 
 // Dica do login pelo navegador: fica fora da região role="status" da baía.
 const LIVE_BONUS_NAVEGADOR = {
-  aberto: () => 'O navegador abriu. Entre na Twitch e feche o navegador. O login entra sozinho nesta baía.',
+  aberto: () => 'A Mesa abriu uma janela para esta baía. Entre na Twitch nesta janela que abriu e feche-a. O login entra sozinho nesta baía.',
   importando: () => 'Copiando o login do navegador.',
   ok: (auto) => (auto
     ? 'Login copiado do navegador. «Assistir e resgatar sozinho» ficou ligado nesta baía.'
     : 'Login copiado do navegador.'),
-  pending: () => 'O login no navegador ainda não terminou. Entre na Twitch, feche o navegador e clique em «Já entrei».',
+  pending: () => 'Ainda não há login nessa janela. Entre na Twitch nela, feche-a e clique em «Já entrei».',
+  'leitura-falhou': () => 'Não consegui ler o navegador desta baía. Feche todas as janelas dele e clique em «Já entrei».',
   'no-browser': () => 'Instale o Microsoft Edge ou o Google Chrome para entrar pelo navegador.',
   'browser-open': () => 'Feche a janela do navegador de login desta baía antes de clicar em «Já entrei».',
   failed: () => 'Não foi possível copiar o login. Feche o navegador e clique em «Já entrei».',
@@ -161,7 +166,7 @@ function liveBonusDica(nav, agora, auto) {
   if (nav.estado === 'ok' && agora - (nav.em || 0) > 60000) return { texto: '', parado: false };
   const chave = nav.estado === 'falhou' ? (nav.motivo || 'failed') : nav.estado;
   const frase = LIVE_BONUS_NAVEGADOR[chave] || LIVE_BONUS_NAVEGADOR.failed;
-  const parado = nav.estado === 'falhou' && (chave === 'failed' || chave === 'perfil-em-uso');
+  const parado = nav.estado === 'falhou' && (chave === 'failed' || chave === 'perfil-em-uso' || chave === 'leitura-falhou');
   return { texto: frase(auto), parado };
 }
 

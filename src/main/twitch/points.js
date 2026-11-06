@@ -11,7 +11,9 @@ const MAX_FALHAS = 3;
 const INTERVALO_RESGATE_MS = 20000;
 const JANELA_GANHO_MS = 1500000;
 const PAGINA_VELHA_MS = 15000;
-const MOTIVOS_PAGINA = ['sem-resumo', 'sem-recompensa', 'sem-botao', 'indisponivel', 'pede-texto', 'tempo', 'ocupado', 'outro'];
+const MOTIVOS_PAGINA = ['sem-resumo', 'sem-centro', 'sem-recompensa', 'recompensa-ambigua', 'sem-botao', 'indisponivel', 'pede-texto', 'tempo', 'ocupado', 'outro'];
+const VISTOS_MAX = 8;
+const VISTOS_TAMANHO = 45;
 const LOGIN_RE = /^[A-Za-z0-9_]{1,25}$/;
 
 function loginValido(value) {
@@ -180,6 +182,16 @@ function limparFatos(raw) {
   };
 }
 
+// Títulos vistos no centro: texto puro, controle removido, até 8 itens de 45 caracteres.
+function limparVistos(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t) => typeof t === 'string')
+    .map((t) => t.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim().slice(0, VISTOS_TAMANHO))
+    .filter(Boolean)
+    .slice(0, VISTOS_MAX);
+}
+
 function limparResultado(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const id = raw.id;
@@ -187,7 +199,7 @@ function limparResultado(raw) {
   if (raw.estado === 'clicado') return { id, estado: 'clicado', motivo: '' };
   if (raw.estado !== 'falhou') return null;
   const motivo = MOTIVOS_PAGINA.includes(raw.motivo) ? raw.motivo : 'outro';
-  return { id, estado: 'falhou', motivo };
+  return { id, estado: 'falhou', motivo, vistos: limparVistos(raw.vistos) };
 }
 
 module.exports = {

@@ -232,7 +232,8 @@ function createTwitchWindows(deps) {
         const login = typeof valor === 'string' ? valor.trim() : '';
         return P.loginValido(login) ? login.toLowerCase() : '';
       })
-      .catch(() => '');
+      // Erro de leitura vira null (não sabemos o login); sem cookie continua ''.
+      .catch(() => null);
   }
 
   function limpar(i) {

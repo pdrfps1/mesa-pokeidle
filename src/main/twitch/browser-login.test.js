@@ -125,16 +125,38 @@ describe('importarSessaoTwitch', () => {
     assert.deepEqual(r, { ok: false, reason: 'browser-open' });
   });
 
-  it('sem sessão lida: pending', async () => {
+  it('perfil sem login válido (leitor devolve semSessao): pending', async () => {
     const root = tmpDir();
     const r = await importarSessaoTwitch({
       browserExe: 'x',
       userData: root,
       catalog,
       session: sessaoFalsa(),
-      lerPerfil: async () => null,
+      lerPerfil: async () => ({ semSessao: true }),
     }, 0);
     assert.deepEqual(r, { ok: false, reason: 'pending' });
+  });
+
+  it('leitura que devolve null: leitura-falhou', async () => {
+    const r = await importarSessaoTwitch({
+      browserExe: 'x',
+      userData: tmpDir(),
+      catalog,
+      session: sessaoFalsa(),
+      lerPerfil: async () => null,
+    }, 0);
+    assert.deepEqual(r, { ok: false, reason: 'leitura-falhou' });
+  });
+
+  it('leitura que rejeita: leitura-falhou', async () => {
+    const r = await importarSessaoTwitch({
+      browserExe: 'x',
+      userData: tmpDir(),
+      catalog,
+      session: sessaoFalsa(),
+      lerPerfil: async () => { throw new Error('cdp caiu'); },
+    }, 0);
+    assert.deepEqual(r, { ok: false, reason: 'leitura-falhou' });
   });
 
   it('com sessão: limpa os cookies antes de gravar, não muda o UA, devolve o login e não loga nada', async () => {
@@ -585,7 +607,7 @@ describe('saída pendente com navegador aberto (correção 5)', () => {
       findBrowser: () => 'x',
       aoEstado() {},
       // Sem perfil em disco não há sessão para ler: é o que o login real faria depois de apagado.
-      lerPerfil: async (_exe, perfil) => (fs.existsSync(perfil) ? { cookies: cookiesNovos, login: 'b' } : null),
+      lerPerfil: async (_exe, perfil) => (fs.existsSync(perfil) ? { cookies: cookiesNovos, login: 'b' } : { semSessao: true }),
     });
     assert.deepEqual(login.sair(0), { ok: false, reason: 'perfil-em-uso' });
     fs.rmSync(path.join(dir, 'lockfile'));
