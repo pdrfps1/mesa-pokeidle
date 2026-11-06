@@ -112,6 +112,16 @@ function liveBonusAtivos(bay, decorrido) {
   return partes.length ? partes.join(' · ') : 'nenhum ativo';
 }
 
+// Botões do centro no sem-botao: total e um item por botão (dts|alvo|aria|tab|custo|desab). Só texto.
+function liveBonusBotoesCentro(ultimo) {
+  const sim = (v) => (v === true ? 'sim' : 'não');
+  const campo = (v) => (typeof v === 'string' && v ? v : '-');
+  const lista = Array.isArray(ultimo.botoesCentro) ? ultimo.botoesCentro.filter((b) => b && typeof b === 'object') : [];
+  const itens = lista.map((b) => [campo(b.dts), campo(b.alvo), campo(b.aria), sim(b.tab), sim(b.custo), sim(b.desab)].join('|'));
+  const total = Number.isFinite(ultimo.totalBotoesCentro) ? ultimo.totalBotoesCentro : 0;
+  return ` Botões do centro: total=${total}; ${itens.length ? itens.join('; ') : 'nenhum'}`;
+}
+
 // Diálogos do sem-centro: um trecho por diálogo. Strings só entram como texto, nunca como HTML.
 function liveBonusDialogos(dialogos, antes) {
   const lista = Array.isArray(dialogos) ? dialogos.filter((d) => d && typeof d === 'object') : [];
@@ -167,7 +177,8 @@ function liveBonusUltimo(ultimo) {
     if (ultimo.motivo === 'sem-botao') {
       base += `, trava=${typeof ultimo.trava === 'string' && ultimo.trava ? ultimo.trava : '-'}`;
       const dialogos = liveBonusDialogos(ultimo.dialogos, ultimo.dialogoAntes);
-      return dialogos ? `${base}. ${dialogos}` : base;
+      const texto = dialogos ? `${base}. ${dialogos}` : base;
+      return texto + liveBonusBotoesCentro(ultimo);
     }
     if (ultimo.motivo === 'sem-centro') {
       base += `, fase=${ultimo.fase || '-'}, clicou=${ultimo.clicou === true ? 'sim' : 'não'}`;

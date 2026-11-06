@@ -309,7 +309,7 @@ describe('limparFatos e limparResultado', () => {
 
   it('resultado: id e estado precisam ser válidos; motivo desconhecido vira outro', () => {
     // trava: '' entrou no resultado de falha (campo novo); o resto do formato não muda.
-    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], cabecalho: null, classes: [] };
+    const base = { trava: '', vistos: [], fase: '', clicou: false, pistas: [], pistasAntes: null, dialogoAntes: false, dialogos: [], botoesCentro: [], totalBotoesCentro: 0, cabecalho: null, classes: [] };
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'coisa' }), { id: 5, estado: 'falhou', motivo: 'outro', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'indisponivel' }), { id: 5, estado: 'falhou', motivo: 'indisponivel', ...base });
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'clicado', motivo: 'x' }), { id: 5, estado: 'clicado', motivo: '' });
@@ -444,6 +444,17 @@ describe('limparFatos e limparResultado', () => {
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro' }).cabecalho, null);
     assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', cabecalho: 'x' }).cabecalho, null);
     assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-centro', cabecalho: { achado: 'sim', cadeia: 'x' } }).cabecalho, vazio);
+  });
+
+  it('botoesCentro: até 8, texto curto, booleanos estritos; total finito com teto 999', () => {
+    const botoes = Array.from({ length: 10 }, (_, i) => ({ dts: 'A\u0007' + i, alvo: 'x'.repeat(60), aria: 'ok', tab: 'sim', custo: true, desab: 1 }));
+    const r = P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', botoesCentro: botoes, totalBotoesCentro: 5000 });
+    assert.equal(r.botoesCentro.length, 8);
+    assert.deepEqual(r.botoesCentro[0], { dts: 'A#', alvo: 'x'.repeat(40), aria: 'ok', tab: false, custo: true, desab: false });
+    assert.equal(r.totalBotoesCentro, 999);
+    assert.deepEqual(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao' }).botoesCentro, []);
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', totalBotoesCentro: NaN }).totalBotoesCentro, 0);
+    assert.equal(P.limparResultado({ id: 5, estado: 'falhou', motivo: 'sem-botao', totalBotoesCentro: '7' }).totalBotoesCentro, 0);
   });
 
   it('cabecalho: até 4 níveis, no curto, contagens com teto, booleanos só se true estrito', () => {

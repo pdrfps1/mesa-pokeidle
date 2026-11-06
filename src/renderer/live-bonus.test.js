@@ -329,7 +329,21 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     await esperar();
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
     assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /, trava=fora-do-centro$/);
+    assert.match(dd.textContent, /, trava=fora-do-centro Botões do centro: total=0; nenhum$/);
+    assert.equal(dd.innerHTML, undefined);
+  });
+
+  it('sem-botao lista os botões do centro só como texto, com <b> literal', async () => {
+    const P = require('../main/twitch/points.js');
+    const em = Date.now() - 1000;
+    const botoesCentro = [{ dts: '<b>x</b>', alvo: '', aria: '', tab: false, custo: true, desab: false }];
+    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 3 };
+    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
+    montar(snap(quatro({ 0: { ultimo } })));
+    await esperar();
+    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
+    assert.ok(dd, 'linha do sem-botao');
+    assert.match(dd.textContent, /trava=sem-dedicado Botões do centro: total=3; <b>x<\/b>\|-\|-\|não\|sim\|não$/);
     assert.equal(dd.innerHTML, undefined);
   });
 

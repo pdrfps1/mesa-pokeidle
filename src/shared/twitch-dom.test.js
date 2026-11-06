@@ -204,6 +204,59 @@ describe('acharRecompensa e acharBotaoResgatar', () => {
   });
 });
 
+describe('botoesDoCentro', () => {
+  function centroCom(botoes) {
+    const centro = el();
+    for (const b of botoes) b.parent = centro;
+    centro.listas['button,[role="button"]'] = botoes;
+    return centro;
+  }
+
+  it('Redeem com dts RequestRewardButton e custo 300: atributos curtos, custo true, sem texto exportado', () => {
+    const redeem = el({ tag: 'button', textContent: 'Resgatar 300', attrs: { 'data-test-selector': 'RequestRewardButton', 'aria-label': 'Resgatar' } });
+    const d = doc({ [S.centro[0]]: centroCom([redeem]) });
+    const out = D.botoesDoCentro(d, 300);
+    assert.deepEqual(out, [{ dts: 'RequestRewardButton', alvo: '', aria: 'Resgatar', tab: false, custo: true, desab: false }]);
+    assert.equal(D.contarBotoesCentro(d), 1);
+    assert.equal(JSON.stringify(out).includes('Resgatar 300'), false);
+  });
+
+  it('botão sem atributos: tudo vazio ou falso', () => {
+    const d = doc({ [S.centro[0]]: centroCom([el({ tag: 'button' })]) });
+    assert.deepEqual(D.botoesDoCentro(d, 300), [{ dts: '', alvo: '', aria: '', tab: false, custo: false, desab: false }]);
+  });
+
+  it('dígito em atributo vira #, data-a-target entra curto', () => {
+    const b = el({ tag: 'button', attrs: { 'aria-label': 'Canal 2', 'data-a-target': 'reward-1' } });
+    const out = D.botoesDoCentro(doc({ [S.centro[0]]: centroCom([b]) }), 300);
+    assert.equal(out[0].aria, 'Canal #');
+    assert.equal(out[0].alvo, 'reward-#');
+  });
+
+  it('tab no ancestral até a raiz, disabled e aria-disabled marcam desab', () => {
+    const centro = el();
+    const tab = el({ tag: 'div', attrs: { role: 'tab' }, parent: centro });
+    const dentroTab = el({ tag: 'button', parent: tab });
+    const desab1 = el({ tag: 'button', disabled: true });
+    const desab2 = el({ tag: 'button', attrs: { 'aria-disabled': 'true' } });
+    centro.listas['button,[role="button"]'] = [dentroTab, desab1, desab2];
+    const out = D.botoesDoCentro(doc({ [S.centro[0]]: centro }), 300);
+    assert.deepEqual(out.map((b) => [b.tab, b.desab]), [[true, false], [false, true], [false, true]]);
+  });
+
+  it('limite de 8 botões, total conta todos', () => {
+    const botoes = Array.from({ length: 10 }, () => el({ tag: 'button' }));
+    const d = doc({ [S.centro[0]]: centroCom(botoes) });
+    assert.equal(D.botoesDoCentro(d, 300).length, 8);
+    assert.equal(D.contarBotoesCentro(d), 10);
+  });
+
+  it('raiz null: devolve [] e total 0', () => {
+    assert.deepEqual(D.botoesDoCentro(doc({}), 300), []);
+    assert.equal(D.contarBotoesCentro(doc({})), 0);
+  });
+});
+
 describe('resgatar', () => {
   // Cenário com clique real: o resumo abre e fecha o centro e a ordem dos cliques fica registrada.
   function cenario(opcoes = {}) {
@@ -266,10 +319,17 @@ describe('resgatar', () => {
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
   });
 
+  it('sem-botao traz botoesCentro e totalBotoesCentro, lidos com o centro ainda aberto', async () => {
+    const { d, deps } = cenario({ semBotao: true });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
+    assert.equal(res.totalBotoesCentro, 1);
+    assert.deepEqual(res.botoesCentro, [{ dts: '', alvo: '', aria: '', tab: false, custo: false, desab: false }]);
+  });
+
   it('sem botão de custo: sem-botao', async () => {
     const { d, ordem, deps } = cenario({ semBotao: true });
     // Agora o sem-botao traz fase, trava e diálogos. Sem seletor dedicado a trava é sem-dedicado.
-    const { dialogos, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
+    const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
     assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado' });
     assert.ok(Array.isArray(dialogos));
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
@@ -802,7 +862,7 @@ describe('botão de confirmação confere o custo no diálogo (O1)', () => {
     };
     d.mapa[S.botaoPontos[0]] = resumo;
     const deps = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
-    const { dialogos, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
+    const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, deps);
     assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
     assert.ok(Array.isArray(dialogos));
     assert.equal(dedicado.clicks, 0);
@@ -1564,7 +1624,7 @@ describe('centro pelo cabeçalho com id específico (diálogo que contém o cabe
     const ext = dialogoExtensao(ordem, 'ext');
     d.dialogos.push(ext.dialogo);
     d.mapa[S.resgatar[0]] = ext.botao;
-    const { dialogos, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    const { dialogos, botoesCentro, totalBotoesCentro, ...res } = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
     assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro' });
     assert.ok(Array.isArray(dialogos));
     assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);

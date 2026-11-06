@@ -340,7 +340,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
     avisar();
   }
 
-  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, cabecalho, classes }) {
+  function resultado(i, { id, estado, motivo, trava, vistos, fase, clicou, pistas, pistasAntes, dialogoAntes, dialogos, botoesCentro, totalBotoesCentro, cabecalho, classes }) {
     const b = bays[i];
     if (!b.pendente || b.pendente.id !== id) return;
     if (estado === 'clicado') {
@@ -362,6 +362,8 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         pistasAntes: Array.isArray(pistasAntes) ? pistasAntes : null,
         dialogoAntes: dialogoAntes === true,
         dialogos: Array.isArray(dialogos) ? dialogos : [],
+        botoesCentro: Array.isArray(botoesCentro) ? botoesCentro : [],
+        totalBotoesCentro: typeof totalBotoesCentro === 'number' ? totalBotoesCentro : 0,
         cabecalho: cabecalho && typeof cabecalho === 'object' ? cabecalho : null,
         classes: Array.isArray(classes) ? classes : [],
       };

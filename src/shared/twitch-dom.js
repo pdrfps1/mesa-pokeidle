@@ -566,6 +566,41 @@ var MESA_TWITCH_DOM = (function () {
     return out;
   }
 
+  const BOTOES_CENTRO_MAX = 8;
+  const CONTAGEM_CENTRO_MAX = 999;
+
+  // Botões do centro para o diagnóstico do sem-botao: até 8, só atributos curtos e booleanos. O campo custo lê o texto do botão
+  // só para virar booleano; nenhum texto é exportado.
+  function botoesDoCentro(doc, custo) {
+    try {
+      const raiz = centroAberto(doc);
+      if (!raiz) return [];
+      const alvo = Number(custo);
+      return Array.from(raiz.querySelectorAll('button,[role="button"]')).slice(0, BOTOES_CENTRO_MAX).map((b) => ({
+        dts: curto(atributo(b, 'data-test-selector')),
+        alvo: curto(atributo(b, 'data-a-target')),
+        aria: curto(atributo(b, 'aria-label')),
+        tab: seguro(() => {
+          for (let x = b; x; x = x.parentElement) {
+            if (atributo(x, 'role') === 'tab') return true;
+            if (x === raiz) break;
+          }
+          return false;
+        }, false),
+        custo: seguro(() => numerosDe(textoDe(b)).includes(alvo), false),
+        desab: seguro(() => !!b.disabled || atributo(b, 'aria-disabled') === 'true', false),
+      }));
+    } catch { return []; }
+  }
+
+  // Total de botões do centro, teto 999. Sem centro, 0.
+  function contarBotoesCentro(doc) {
+    return seguro(() => {
+      const raiz = centroAberto(doc);
+      return raiz ? Math.min(CONTAGEM_CENTRO_MAX, raiz.querySelectorAll('button,[role="button"]').length) : 0;
+    }, 0);
+  }
+
   // Trecho pós-clique do resgate, usado pelo item achado e pelo card conferido: campo de texto, Redeem com custo, clique, fechar.
   // Só aqui sai o clique no Redeem.
   async function confirmarResgate(doc, pedido, deps, achaCentro, semCentro) {
@@ -582,8 +617,10 @@ var MESA_TWITCH_DOM = (function () {
     }, 5000);
     if (!botao) {
       const dialogos = dialogosDiag(doc, pedido.titulo, null);
+      const botoesCentro = botoesDoCentro(doc, pedido.custo);
+      const totalBotoesCentro = contarBotoesCentro(doc);
       await fecharCentro(doc, deps);
-      return { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: ultimo.trava, dialogos };
+      return { estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: ultimo.trava, dialogos, botoesCentro, totalBotoesCentro };
     }
     if (desabilitado(botao)) {
       await fecharCentro(doc, deps);
@@ -721,6 +758,8 @@ var MESA_TWITCH_DOM = (function () {
     resgatar,
     centroAberto,
     dialogosDiag,
+    botoesDoCentro,
+    contarBotoesCentro,
     cabecalhoDiag,
     classesPista,
   };

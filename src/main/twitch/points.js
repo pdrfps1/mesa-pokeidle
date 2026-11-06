@@ -272,6 +272,24 @@ function limparDialogos(raw) {
   });
 }
 
+// Botões do centro no sem-botao: até 8, atributos curtos e booleanos estritos. Total com teto.
+const BOTOES_CENTRO_MAX_LIMPO = 8;
+
+function limparBotoesCentro(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.slice(0, BOTOES_CENTRO_MAX_LIMPO).map((b) => {
+    const o = b && typeof b === 'object' ? b : {};
+    return {
+      dts: textoCurto(o.dts),
+      alvo: textoCurto(o.alvo),
+      aria: textoCurto(o.aria),
+      tab: o.tab === true,
+      custo: o.custo === true,
+      desab: o.desab === true,
+    };
+  });
+}
+
 // Cabeçalho do centro: achado estrito, até 4 níveis, nomes curtos e contagens com teto. Booleanos só se forem true.
 const CADEIA_MAX = 4;
 
@@ -314,6 +332,8 @@ function limparResultado(raw) {
     pistasAntes: Array.isArray(raw.pistasAntes) ? limparPistas(raw.pistasAntes) : null,
     dialogoAntes: raw.dialogoAntes === true,
     dialogos: limparDialogos(raw.dialogos),
+    botoesCentro: limparBotoesCentro(raw.botoesCentro),
+    totalBotoesCentro: contagemLimpa(raw.totalBotoesCentro),
     cabecalho: limparCabecalho(raw.cabecalho),
     classes: limparPistas(raw.classes).slice(0, 8),
   };
