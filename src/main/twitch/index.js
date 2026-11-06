@@ -9,6 +9,7 @@ const { bundleTwitchPreload } = require('./bundle');
 const { createTwitchBrowserLogin, sairDaBaia } = require('./browser-login');
 const { criarLeitorDeLogin, sairComInvalidacao } = require('./login-reader');
 const { openOutside } = require('../live-login');
+const { caminhoPadrao, registrarErro } = require('./erros-log');
 
 const VIGIA_LOGIN_RAPIDO_MS = 3000;
 const VIGIA_LOGIN_MS = 30000;
@@ -38,6 +39,7 @@ function registerTwitch(deps) {
     aoErroPagina: (i) => controller.erroPagina(i),
   });
 
+  const caminhoLog = caminhoPadrao(userData());
   controller = createTwitchController({
     janelas,
     prefs,
@@ -45,6 +47,7 @@ function registerTwitch(deps) {
     onChange: () => {
       for (const fn of listeners) fn();
     },
+    registrarErro: (entrada) => registrarErro(entrada, { caminho: caminhoLog, agora: () => Date.now() }),
   });
 
   const browserLogin = createTwitchBrowserLogin({

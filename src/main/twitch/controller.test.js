@@ -3,6 +3,7 @@
 const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const { createTwitchController, TICK_MS, HOME } = require('./controller');
+const { montarLinha } = require('./erros-log');
 
 // Janelas falsas: registram cada chamada. setUrl troca a URL sem registrar (simula raid ou redirect).
 function fakeJanelas() {
@@ -44,12 +45,15 @@ function montar() {
     janelas,
     estado: { t: 1000000, auto: [true, false, false, false], tipos: { xp: true, captura: false, shiny: false }, limiarMin: 5 },
     mudancas: 0,
+    registrados: [],
   };
   ctx.c = createTwitchController({
     janelas,
     prefs: () => ({ tipos: ctx.estado.tipos, limiarMin: ctx.estado.limiarMin, auto: ctx.estado.auto }),
     agora: () => ctx.estado.t,
     onChange: () => { ctx.mudancas += 1; },
+    // Mesma conversão do log real (pausado vira ISO), para o teste ler o que de fato seria gravado.
+    registrarErro: (entrada) => { ctx.registrados.push(montarLinha(entrada, () => Date.UTC(2026, 10, 6))); },
   });
   return ctx;
 }
@@ -647,5 +651,48 @@ describe('controller: isolamento, login, vigia e erro de página (correção 1)'
     assert.equal(ctx.c.snapshot().bays[0].situacao, 'erro-pagina');
     correr(ctx, 61000, {});
     assert.notEqual(ctx.c.snapshot().bays[0].situacao, 'erro-pagina');
+  });
+});
+
+describe('log de erros do resgate', () => {
+  it('falha informada pela página grava uma linha com motivo e trava', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'indisponivel', trava: 'login', fase: 'clique', clicou: true, vistos: ['Hidratar 300'] });
+    const falha = ctx.registrados.find((e) => e.motivo === 'indisponivel');
+    assert.ok(falha, 'falha deveria gravar uma linha');
+    assert.equal(falha.baia, 0);
+    assert.equal(falha.tipo, 'xp');
+    assert.equal(falha.trava, 'login');
+    assert.equal(falha.fase, 'clique');
+    assert.equal(falha.clicou, true);
+    assert.deepEqual(falha.detalhe.vistos, ['Hidratar 300']);
+  });
+
+  it('três falhas seguidas gravam uma pausa com a hora de volta', () => {
+    const ctx = montar();
+    abrir(ctx);
+    correr(ctx, TICK_MS, {});
+    correr(ctx, 200000, {});
+    correr(ctx, 1000000, {});
+    const pausas = ctx.registrados.filter((e) => e.tipo === 'pausa');
+    assert.equal(pausas.length, 1);
+    assert.equal(pausas[0].motivo, 'falhas-repetidas');
+    const volta = Date.parse(pausas[0].pausado) - ctx.estado.t;
+    assert.ok(volta > 3000000 && volta <= 3600000, `volta restante ${volta}`);
+  });
+
+  it('relógio NaN: o resgate segue sem exceção e nenhuma pausa grava hora inválida', () => {
+    const ctx = montar();
+    abrir(ctx);
+    ctx.estado.t = NaN;
+    assert.doesNotThrow(() => correr(ctx, 1000000, {}));
+    assert.doesNotThrow(() => ctx.c.resultado(0, { id: 1, estado: 'falhou', motivo: 'indisponivel' }));
+    assert.doesNotThrow(() => ctx.c.snapshot());
+    for (const e of ctx.registrados.filter((r) => r.tipo === 'pausa')) {
+      assert.equal(Object.prototype.hasOwnProperty.call(e, 'pausado') ? e.pausado : null, null);
+    }
+    assert.equal(ctx.registrados.some((r) => typeof r.pausado === 'string' && r.pausado.includes('Invalid')), false);
   });
 });

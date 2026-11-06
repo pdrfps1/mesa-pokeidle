@@ -61,11 +61,35 @@ function nomeDoCanal(tw, login) {
   return { login, nome: achado && achado.nome ? achado.nome : login };
 }
 
-function createTwitchController({ janelas, prefs, agora, onChange }) {
+function createTwitchController({ janelas, prefs, agora, onChange, registrarErro }) {
   const bays = [];
   for (let i = 0; i < BAYS; i += 1) bays.push(estadoInicial());
   let seq = 0;
   let ultimaMarca = '';
+
+  // Log de erros é opcional e nunca pode derrubar o resgate.
+  function registrar(entrada) {
+    try {
+      if (typeof registrarErro === 'function') registrarErro(entrada);
+    } catch {
+      /* falha de log não interfere no resgate */
+    }
+  }
+
+  // Conta a falha; quando ela pausa o tipo, deixa a pausa (e a hora de volta) no log.
+  function contarFalha(b, i, tipo, t) {
+    b.falhas = P.registrarFalha(b.falhas, tipo, t);
+    const f = b.falhas[tipo];
+    if (f && f.n >= P.MAX_FALHAS) {
+      registrar({
+        baia: i,
+        tipo: 'pausa',
+        motivo: 'falhas-repetidas',
+        pausado: f.ate,
+        detalhe: { tipo, falhas: f.n },
+      });
+    }
+  }
 
   function enviar(i, tipo) {
     bays[i].cmdEm[tipo] = agora();
@@ -93,7 +117,7 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         b.ultimoResgateEm = t;
       } else if (e === 'expirado') {
         b.ultimo = { tipo: b.pendente.tipo, em: t, estado: 'sem-confirmacao', motivo: '' };
-        b.falhas = P.registrarFalha(b.falhas, b.pendente.tipo, t);
+        contarFalha(b, i, b.pendente.tipo, t);
         b.pendente = null;
         b.ultimoResgateEm = t;
       }
@@ -367,7 +391,24 @@ function createTwitchController({ janelas, prefs, agora, onChange }) {
         cabecalho: cabecalho && typeof cabecalho === 'object' ? cabecalho : null,
         classes: Array.isArray(classes) ? classes : [],
       };
-      b.falhas = P.registrarFalha(b.falhas, b.pendente.tipo, t);
+      const u = b.ultimo;
+      registrar({
+        baia: i,
+        tipo: u.tipo,
+        motivo: u.motivo,
+        fase: u.fase,
+        trava: u.trava,
+        clicou: u.clicou,
+        detalhe: {
+          vistos: u.vistos,
+          pistas: u.pistas,
+          dialogos: u.dialogos,
+          botoesCentro: u.botoesCentro,
+          cabecalho: u.cabecalho,
+          classes: u.classes,
+        },
+      });
+      contarFalha(b, i, b.pendente.tipo, t);
       b.pendente = null;
       b.ultimoResgateEm = t;
       avisar();
