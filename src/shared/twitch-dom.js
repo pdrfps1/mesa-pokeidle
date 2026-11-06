@@ -22,6 +22,8 @@ var MESA_TWITCH_DOM = (function () {
       'button[aria-label="Resgatar Bônus"]',
     ],
     centro: ['#channel-points-reward-center-body', '[data-test-selector="reward-center"]', '.reward-center-body'],
+    // Cabeçalho do centro com id específico. Só conta se estiver dentro de um role="dialog" (centroPorCabecalho).
+    cabecalhoCentro: ['#channel-points-reward-center-header'],
     resgatar: ['[data-test-selector="RequestRewardButton"]'],
     // Campo de texto procurado dentro do centro achado.
     campoTexto: ['textarea'],
@@ -468,9 +470,24 @@ var MESA_TWITCH_DOM = (function () {
     return new Promise((resolve) => { setTimeout(resolve, ms); });
   }
 
-  // Centro: só pelos seletores específicos. Diálogo genérico nunca é centro, mesmo com a recompensa dentro.
+  // Centro pelo cabeçalho com id específico: sobe a partir do pai do cabeçalho (nunca o próprio), até 50 níveis,
+  // e devolve o primeiro ancestral com role="dialog". Sem diálogo ancestral, nada.
+  function centroPorCabecalho(doc) {
+    return seguro(() => {
+      const h = primeiro(doc, SELETORES.cabecalhoCentro);
+      if (!h) return null;
+      let anc = h.parentElement;
+      for (let n = 0; anc && n < 50; n += 1, anc = anc.parentElement) {
+        if (atributo(anc, 'role') === 'dialog') return anc;
+      }
+      return null;
+    }, null);
+  }
+
+  // Centro: pelos seletores específicos ou pelo diálogo que contém o cabeçalho com id específico.
+  // Diálogo genérico continua não sendo centro: só entra o diálogo que contém esse cabeçalho.
   function centroAberto(doc) {
-    return primeiro(doc, SELETORES.centro);
+    return primeiro(doc, SELETORES.centro) || centroPorCabecalho(doc);
   }
 
   // Títulos dos cartões do centro, só texto, até 8 itens de 45 caracteres. Diagnóstico do painel.
@@ -576,6 +593,7 @@ var MESA_TWITCH_DOM = (function () {
     esperar,
     pausa,
     resgatar,
+    centroAberto,
     dialogosDiag,
     cabecalhoDiag,
     classesPista,

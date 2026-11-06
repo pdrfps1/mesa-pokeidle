@@ -1434,3 +1434,171 @@ describe('regra fechada do botão de confirmação (correção 4)', () => {
     assert.equal(D.acharBotaoResgatar(doc({ [S.centro[0]]: centro, [S.resgatar[0]]: dedicado }), 300, 'Bônus XP'), dedicado);
   });
 });
+
+describe('centro pelo cabeçalho com id específico (diálogo que contém o cabeçalho)', () => {
+  const HDR = '#channel-points-reward-center-header';
+  const esperarJa = { esperar: (fn) => Promise.resolve(fn()), pausa: () => Promise.resolve() };
+
+  // Diálogo de extensão: item e botão dentro de um role=dialog sem cabeçalho. Cliques registrados como ext-*.
+  function dialogoExtensao(ordem, nome) {
+    const dialogo = el({ tag: 'div', attrs: { role: 'dialog' } });
+    const item = el({ tag: 'button', textContent: 'Bônus XP' });
+    item.parent = dialogo;
+    item.onClick = () => ordem.push(`ext-${nome}-item`);
+    dialogo.listas['button,[role="button"]'] = [item];
+    const botao = el({ tag: 'button', textContent: '300' });
+    botao.onClick = () => ordem.push(`ext-${nome}-confirma`);
+    noCentro(dialogo, botao);
+    cartaNoCentro(dialogo, 'Bônus XP 300', 'Bônus XP');
+    return { dialogo, item, botao };
+  }
+
+  // Cenário com cabeçalho. Por padrão o cabeçalho fica dentro de um intermediário dentro de um role=dialog.
+  // Opções: hdrFora (cabeçalho em div sem diálogo), hdrDialogoProprio (o cabeçalho é o role=dialog),
+  // jaAberto (cabeçalho já no mapa antes do resgate), somaAoItem (cabeçalho some depois do clique no item).
+  function cenarioCabecalho(opcoes = {}) {
+    const ordem = [];
+    const d = doc();
+    const dialogo = el({ tag: 'div', attrs: { role: 'dialog' } });
+    const h = el({ tag: 'div', attrs: { id: 'channel-points-reward-center-header' } });
+    if (opcoes.hdrFora) {
+      h.parent = el({ tag: 'div' });
+    } else if (opcoes.hdrDialogoProprio) {
+      h.attrs.role = 'dialog';
+      h.parent = el({ tag: 'div' });
+    } else {
+      const inter = el({ tag: 'div' });
+      h.parent = inter;
+      inter.parent = dialogo;
+      inter.children = [h];
+      dialogo.children = [inter];
+    }
+    const item = el({ tag: 'button', textContent: 'Bônus XP' });
+    item.parent = dialogo;
+    item.onClick = () => {
+      ordem.push('item');
+      if (opcoes.somaAoItem) delete d.mapa[HDR];
+    };
+    dialogo.listas['button,[role="button"]'] = [item];
+    const botao = el({ tag: 'button', textContent: '300' });
+    botao.onClick = () => ordem.push('confirma');
+    noCentro(dialogo, botao);
+    cartaNoCentro(dialogo, 'Bônus XP 300', 'Bônus XP');
+    d.mapa[S.resgatar[0]] = botao;
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    let aberto = !!opcoes.jaAberto;
+    if (aberto) d.mapa[HDR] = h;
+    resumo.onClick = () => {
+      ordem.push('resumo');
+      aberto = !aberto;
+      if (aberto) d.mapa[HDR] = h;
+      else delete d.mapa[HDR];
+    };
+    d.mapa[S.botaoPontos[0]] = resumo;
+    return { d, ordem, dialogo, h, item, botao };
+  }
+
+  it('T1 caminho feliz: cabeçalho num intermediário dentro de role=dialog, item e dedicado no diálogo', async () => {
+    const { d, ordem, item, botao } = cenarioCabecalho();
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(ordem, ['resumo', 'item', 'confirma', 'resumo']);
+    assert.equal(item.clicks, 1);
+    assert.equal(botao.clicks, 1);
+  });
+
+  it('T2 cabeçalho fora de diálogo: recusado, sem clique no item nem no dedicado', async () => {
+    const { d, ordem, item, botao } = cenarioCabecalho({ hdrFora: true });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.estado, 'falhou');
+    assert.equal(res.motivo, 'sem-centro');
+    assert.equal(res.fase, 'abrir');
+    assert.deepEqual(ordem, ['resumo']);
+    assert.equal(item.clicks, 0);
+    assert.equal(botao.clicks, 0);
+  });
+
+  it('T3 dois diálogos de extensão, sem cabeçalho: recusado, 0 cliques nos botões dos diálogos', async () => {
+    const ordem = [];
+    const d = doc();
+    const a = dialogoExtensao(ordem, 'A');
+    const b = dialogoExtensao(ordem, 'B');
+    d.dialogos.push(a.dialogo, b.dialogo);
+    d.mapa[S.resgatar[0]] = b.botao;
+    const resumo = el({ tag: 'button', textContent: '1.234' });
+    resumo.onClick = () => ordem.push('resumo');
+    d.mapa[S.botaoPontos[0]] = resumo;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.estado, 'falhou');
+    assert.equal(res.motivo, 'sem-centro');
+    assert.deepEqual(ordem, ['resumo']);
+    assert.equal(a.item.clicks + a.botao.clicks + b.item.clicks + b.botao.clicks, 0);
+  });
+
+  it('T4 extensão e centro juntos: só o item e o dedicado do diálogo aceito recebem clique', async () => {
+    const { d, ordem, item, botao } = cenarioCabecalho();
+    const ext = dialogoExtensao(ordem, 'ext');
+    d.dialogos.push(ext.dialogo);
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(ordem, ['resumo', 'item', 'confirma', 'resumo']);
+    assert.equal(item.clicks, 1);
+    assert.equal(botao.clicks, 1);
+    assert.equal(ext.item.clicks, 0);
+    assert.equal(ext.botao.clicks, 0);
+  });
+
+  it('T4 variante: dedicado apontando para o botão da extensão dá sem-botao, sem confirmação (dentroDe)', async () => {
+    const { d, ordem, botao } = cenarioCabecalho();
+    const ext = dialogoExtensao(ordem, 'ext');
+    d.dialogos.push(ext.dialogo);
+    d.mapa[S.resgatar[0]] = ext.botao;
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.deepEqual(res, { estado: 'falhou', motivo: 'sem-botao' });
+    assert.deepEqual(ordem, ['resumo', 'item', 'resumo']);
+    assert.equal(ext.botao.clicks, 0);
+    assert.equal(botao.clicks, 0);
+  });
+
+  it('T5 centro já aberto antes do resgate: sem clique no resumo no pré-check, só o do fechamento', async () => {
+    const { d, ordem } = cenarioCabecalho({ jaAberto: true });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.deepEqual(res, { estado: 'clicado', motivo: '' });
+    assert.deepEqual(ordem, ['item', 'confirma', 'resumo']);
+    assert.equal(ordem.filter((x) => x === 'resumo').length, 1);
+  });
+
+  it('T6 cabeçalho some depois do clique no item: fase confirmar, dedicado sem clique', async () => {
+    const { d, ordem, botao } = cenarioCabecalho({ somaAoItem: true });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.estado, 'falhou');
+    assert.equal(res.motivo, 'sem-centro');
+    assert.equal(res.fase, 'confirmar');
+    assert.deepEqual(ordem, ['resumo', 'item']);
+    assert.equal(botao.clicks, 0);
+  });
+
+  it('T7 o próprio cabeçalho com role=dialog e sem diálogo ancestral: não aceito', async () => {
+    const { d, ordem, item, botao } = cenarioCabecalho({ hdrDialogoProprio: true });
+    const res = await D.resgatar(d, { titulo: 'Bônus XP', custo: 300 }, esperarJa);
+    assert.equal(res.estado, 'falhou');
+    assert.equal(res.motivo, 'sem-centro');
+    assert.equal(res.fase, 'abrir');
+    assert.deepEqual(ordem, ['resumo']);
+    assert.equal(item.clicks, 0);
+    assert.equal(botao.clicks, 0);
+  });
+
+  it('T8 prioridade: com S.centro[0] e o cabeçalho no diálogo, centroAberto devolve o do seletor antigo', () => {
+    const d = doc();
+    const antigo = el({ tag: 'div' });
+    const dialogo = el({ tag: 'div', attrs: { role: 'dialog' } });
+    const h = el({ tag: 'div', attrs: { id: 'channel-points-reward-center-header' } });
+    h.parent = dialogo;
+    d.mapa[S.centro[0]] = antigo;
+    d.mapa[HDR] = h;
+    assert.equal(D.centroAberto(d), antigo);
+    delete d.mapa[S.centro[0]];
+    assert.equal(D.centroAberto(d), dialogo);
+  });
+});

@@ -16,7 +16,7 @@ A separação vem de `browser-login.js`: `pending` é perfil lido sem login vál
 
 Os pontos saem de a Mesa assistir à live do canal numa janela oculta da Twitch (o `controller.js` manda a janela para a URL do canal, e `windows.js` cria e esconde a janela), e não pelo chat.
 
-O resgate só clica no botão de confirmar quando o centro de recompensas está aberto de verdade: só seletores específicos liberam clique; diálogo genérico nunca é usado como centro, nem quando contém a recompensa. Os motivos novos são `sem-centro` (a lista não abriu) e `recompensa-ambigua` (mais de uma recompensa com o título, sem clique); o painel mostra «Vi: …» com os títulos vistos. Os seletores do centro ainda não foram confirmados numa conta real.
+O resgate só clica no botão de confirmar quando o centro de recompensas está aberto de verdade: o centro é reconhecido pelos seletores específicos ou pelo diálogo que contém o cabeçalho `#channel-points-reward-center-header`; diálogo genérico nunca é usado como centro, nem quando contém a recompensa. Os motivos novos são `sem-centro` (a lista não abriu) e `recompensa-ambigua` (mais de uma recompensa com o título, sem clique); o painel mostra «Vi: …» com os títulos vistos. Os seletores do centro ainda não foram confirmados numa conta real.
 
 O diagnóstico do resgate (linha `Diag:` no painel) traz `botoesResumo`: até 4 botões do resumo, cada um com `data-test-selector`, `data-a-target` e `aria-label`, sanitizados (controle removido, dígito vira `#`, corte de 40 caracteres; nunca lê `textContent`). `saldo#` é o índice do seletor de saldo que casou, com `0` para o primário (`copo-balance-string`) e `-1` se nenhum casou. `centro#` é o índice do seletor de centro que casou e vem da leitura periódica de 3 s do preload, não do momento do clique. Quando o resgate falha como `sem-centro`, o resultado traz `fase` (`abrir`, `buscar` ou `confirmar`, onde faltou o centro), `clicou` (true se houve clique no resumo ou no item) e `pistas`: até 8 elementos que podem ser o centro, no formato `tag#id[data-test-selector][role]`, só leitura, nunca clicados. O painel mostra essas pistas como «Vi no DOM: …».
 
@@ -76,7 +76,7 @@ npm install
 npm start
 ```
 
-`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 399 passando em 2026-11-06). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
+`npm start` dispara `build:css` via `prestart`, depois o Electron. Testes: `npm test` (suítes em `src/main`, `src/shared`, `src/preload` e `src/renderer`; 408 passando em 2026-11-06). Executável portátil: `npm run dist` (também roda `build:css` no `predist`).
 
 Instalação guiada no Windows: scripts `instalar.cmd` / `instalar.ps1` na raiz do repositório (ver `README.md`).
 

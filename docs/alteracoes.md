@@ -1,5 +1,84 @@
 # Alterações
 
+## 2026-11-06 — Patch «Vigília» · centro de recompensas reconhecido pelo cabeçalho
+
+> O centro de recompensas agora é reconhecido também quando o diálogo que contém o cabeçalho `#channel-points-reward-center-header` está aberto. Os seletores antigos continuam com prioridade. O clique não mudou.
+
+### Destaques do patch
+- **Cabeçalho com id específico:** o diálogo que contém `#channel-points-reward-center-header` conta como centro.
+- **Seletores antigos primeiro:** `SELETORES.centro` continua sendo tentado antes do cabeçalho.
+- **Mesmas travas:** a recompensa continua sendo buscada e confirmada só dentro do centro aceito.
+
+### Bônus Twitch
+*A Mesa reconhece o centro de recompensas mesmo quando nenhum seletor antigo casa.*
+
+**Por quê.** O diagnóstico das 12:38 mostrou o cabeçalho `channel-points-reward-center-header` dentro de um `role="dialog"`, junto da lista de 30 botões e do título da recompensa. Nenhum seletor de `SELETORES.centro` casou, então a Mesa não reconhecia o centro e a falha saía como `sem-centro`.
+
+- `centroAberto` ⇒ primeiro `SELETORES.centro`; se nada casar, `centroPorCabecalho`
+- `centroPorCabecalho` ⇒ acha `SELETORES.cabecalhoCentro` e sobe a partir do pai do cabeçalho (nunca o próprio), até 50 níveis; devolve o primeiro ancestral com `role="dialog"`; sem ele, devolve nada
+- `SELETORES.cabecalhoCentro` ⇒ `#channel-points-reward-center-header`, em lista própria, fora de `SELETORES.centro`
+- `centroAberto` passa a ser exportado pelo módulo
+
+**NOVO**
+- o centro é reconhecido quando o diálogo que contém o cabeçalho com id específico está aberto
+- o módulo exporta `centroAberto`
+
+**NÃO MUDOU**
+- os seletores antigos continuam com prioridade (`primeiro(doc, SELETORES.centro) || centroPorCabecalho(doc)`)
+- diálogo genérico sozinho nunca é centro; diálogo de extensão sem o cabeçalho é ignorado
+- o clique só vai em recompensa dentro do diálogo aceito
+- as travas de confirmação (`dentroDe`, `escopoConfere`, `desabilitado`, campo de texto) são as mesmas
+- espera de 6 s e `botaoPontos` continuam iguais; o clique no resumo só acontece quando o centro não está aberto
+
+**CLIQUE NOVO (só no fechamento)**
+- quando só o cabeçalho reconhece o centro e a falha vem depois (`sem-recompensa`, `indisponivel`), a Mesa fecha o centro clicando no botão de pontos. Antes, com o centro não reconhecido, esse clique não existia
+
+**RESULTADOS ANTIGOS**
+- o diagnóstico (`centro#`, `centroSeletor`) continua medindo só os seletores antigos
+
+### Arquivos de produto
+- `dashboard/src/shared/twitch-dom.js`: `SELETORES.cabecalhoCentro`, `centroPorCabecalho`, `centroAberto` (agora com o cabeçalho) e a exportação de `centroAberto`
+
+### Testes
+- `npm test` em `dashboard/`: **408** passaram, 0 falharam, em execução de 2026-11-06 (suíte inteira do projeto).
+- Cobertura nova: `twitch-dom.test.js`, describe «centro pelo cabeçalho com id específico (diálogo que contém o cabeçalho)».
+- A contagem é da suíte inteira, que inclui testes ainda não commitados. O código desta entrega ainda não está commitado: a diferença está no working tree contra `92212ac`.
+
+### Não confirmado
+- **Tamanho do diálogo:** se o diálogo que contém o cabeçalho é o diálogo inteiro do centro e não um interno menor.
+- **Botão de confirmar:** se ele fica dentro do mesmo diálogo.
+- **Fechamento:** se o clique no botão de pontos fecha o diálogo.
+- **Validação real:** só aparece no próximo resgate da Baía 2.
+
+### Problemas conhecidos
+- O próximo passo é o usuário repetir o resgate na Baía 2 com «Assistir e resgatar sozinho» e colar a linha `Diag` e a linha de falha, ou a linha de sucesso.
+
+### Como ler o próximo resultado
+- **Sucesso:** estado clicado e recompensa resgatada na Twitch.
+- **`sem-centro` com `fase=abrir`:** a regra não casou.
+- **`sem-recompensa`:** o centro foi aceito, mas o título não bateu.
+- **`sem-centro` com `fase=confirmar`:** o cabeçalho sumiu na tela de detalhe, depois do clique na recompensa.
+- **`sem-botao`:** a confirmação ficou fora do diálogo ou não passou na conferência.
+
+### Patch note
+
+**Patch «Vigília» · 06/11/2026 · centro de recompensas reconhecido pelo cabeçalho**
+
+Resumo: o centro de recompensas passa a ser reconhecido pelo cabeçalho quando nenhum seletor antigo casa. O clique não mudou.
+
+**Twitch / Pontos**
+- [Correção] O centro é reconhecido quando o diálogo que contém `#channel-points-reward-center-header` está aberto.
+- [Ajuste] Os seletores antigos continuam com prioridade; diálogo genérico e diálogo de extensão sem o cabeçalho seguem fora.
+
+**Painel**
+- [Ajuste] Nenhuma tela mudou nesta entrega; a linha de falha `sem-centro` continua igual.
+
+**Diagnóstico**
+- [Ajuste] Nenhum campo novo: `centroSeletor` continua medindo só os seletores antigos.
+
+**Problemas conhecidos**
+- A validação real só aparece no próximo resgate da Baía 2. Próximo passo: repetir o resgate com «Assistir e resgatar sozinho» e colar a linha `Diag` e a linha de falha, ou a de sucesso.
+
 ## 2026-11-06 — Patch «Vigília» · cabeçalho do centro no diagnóstico do resgate da Twitch
 
 > O diagnóstico do resgate agora mostra de qual contêiner veio o cabeçalho do centro de recompensas e quais classes de contêiner existem na página. O clique não mudou: é leitura para a próxima falha real.
