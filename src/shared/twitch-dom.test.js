@@ -2762,6 +2762,43 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
     assert.equal(c.redeem.clicks, 1);
   });
 
+  it('custo 300 == saldo 300, saldo sem aria no detalhe, Redeem 300 novo: via texto, 1 clique, saldo não clicado', async () => {
+    const c = cenario({ saldo: '300', quintoTexto: '300' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.via, 'texto');
+    assert.equal(res.estado, 'clicado');
+    assert.equal(c.redeem.clicks, 1);
+    assert.equal(c.ordem.includes('saldo'), false);
+  });
+
+  it('custo 300 == saldo 300, card "300" sem aria visível na lista (retrato.card): redeem-lista, 0 clique', async () => {
+    const c = cenario({ via: 'custo', saldo: '300', quintoTexto: '300' });
+    c.card.rects = [{}];
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+    assert.equal(c.ordem.includes('saldo'), false);
+  });
+
+  it('custo 300 == saldo 300, sem aria, e um segundo botão "Redeem 300": redeem-varios, 0 clique', async () => {
+    const segundo = el({ tag: 'button', textContent: 'Redeem 300', rects: [{}] });
+    const c = cenario({ saldo: '300', quintoTexto: '300', extraBotoes: [segundo] });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-varios');
+    assert.equal(c.redeem.clicks, 0);
+    assert.equal(segundo.clicks, 0);
+    assert.equal(c.ordem.includes('saldo'), false);
+  });
+
+  it('custo 300 == saldo 300 sem aria e nenhum Redeem: trava redeem-nenhum, 0 clique', async () => {
+    const c = cenario({ saldo: '300', quintoTexto: '300', semRedeem: true });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    // O saldo 300 sem aria sai da contagem e nenhum outro botão com o custo existe: nenhum candidato, não lista.
+    assert.equal(res.trava, 'redeem-nenhum');
+    assert.equal(c.redeem.clicks, 0);
+    assert.equal(c.ordem.includes('saldo'), false);
+  });
+
   it('saldo 450 no botão do saldo, fora do custo: 1 clique, via texto', async () => {
     const c = cenario({ saldo: '450', quintoTexto: '450' });
     const res = await D.resgatar(c.d, pedido(), depsDe(c));

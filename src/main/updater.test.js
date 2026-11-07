@@ -10,10 +10,12 @@ const {
   psEscape,
   startDetached,
   fetchReleaseAsset,
+  sha256File,
 } = require('./updater');
 const fs = require('node:fs');
 const os = require('node:os');
 const nodePath = require('node:path');
+const crypto = require('node:crypto');
 const { EventEmitter } = require('node:events');
 
 const BASE = 'https://github.com/pdrfps1/mesa-pokeidle/releases/download/v0.4.0/';
@@ -135,21 +137,133 @@ function tmpDest() {
   return nodePath.join(dir, 'asset.exe');
 }
 
+function sha256Of(text) {
+  return `sha256:${crypto.createHash('sha256').update(text).digest('hex')}`;
+}
+
+// Baixa "abcd" no destino; o digest é o do conteúdo "abcd" salvo quando o teste pede outro.
+const writeAbcd = async (url, file) => { fs.writeFileSync(file, 'abcd'); };
+const goodAsset = (extra = {}) => ({
+  browser_download_url: 'u',
+  size: 4,
+  digest: sha256Of('abcd'),
+  ...extra,
+});
+
 test('fetchReleaseAsset com tamanho errado remove o arquivo e lança code size', async () => {
   const dest = tmpDest();
   const download = async (url, file) => { fs.writeFileSync(file, 'curto'); };
   await assert.rejects(
-    fetchReleaseAsset({ browser_download_url: 'u', size: 999 }, dest, {}, download),
+    fetchReleaseAsset(goodAsset({ size: 999 }), dest, {}, download),
     (error) => error.code === 'size',
   );
   assert.equal(fs.existsSync(dest), false);
 });
 
-test('fetchReleaseAsset aceita tamanho certo e tolera falha de stat', async () => {
+test('fetchReleaseAsset aceita tamanho e digest certos', async () => {
   const dest = tmpDest();
-  const ok = async (url, file) => { fs.writeFileSync(file, 'abcd'); };
-  await fetchReleaseAsset({ browser_download_url: 'u', size: 4 }, dest, {}, ok);
+  await fetchReleaseAsset(goodAsset(), dest, {}, writeAbcd);
   assert.equal(fs.existsSync(dest), true);
-  const semStat = async () => {};
-  await fetchReleaseAsset({ browser_download_url: 'u', size: 4 }, nodePath.join(nodePath.dirname(dest), 'nao-existe.exe'), {}, semStat);
+});
+
+test('fetchReleaseAsset com digest errado remove o arquivo e lança code digest', async () => {
+  const dest = tmpDest();
+  await assert.rejects(
+    fetchReleaseAsset(goodAsset({ digest: sha256Of('outro conteudo') }), dest, {}, writeAbcd),
+    (error) => error.code === 'digest',
+  );
+  assert.equal(fs.existsSync(dest), false);
+});
+
+test('fetchReleaseAsset com digest malformado lança code digest e remove o arquivo', async () => {
+  const dest = tmpDest();
+  await assert.rejects(
+    fetchReleaseAsset(goodAsset({ digest: 'sha256:xyz' }), dest, {}, writeAbcd),
+    (error) => error.code === 'digest',
+  );
+  assert.equal(fs.existsSync(dest), false);
+  const dest2 = tmpDest();
+  await assert.rejects(
+    fetchReleaseAsset(goodAsset({ digest: 'md5:' + 'a'.repeat(32) }), dest2, {}, writeAbcd),
+    (error) => error.code === 'digest',
+  );
+  assert.equal(fs.existsSync(dest2), false);
+});
+
+test('fetchReleaseAsset sem digest lança code no-digest e remove o arquivo', async () => {
+  for (const digest of [undefined, null]) {
+    const dest = tmpDest();
+    await assert.rejects(
+      fetchReleaseAsset(goodAsset({ digest }), dest, {}, writeAbcd),
+      (error) => error.code === 'no-digest',
+    );
+    assert.equal(fs.existsSync(dest), false);
+  }
+});
+
+test('fetchReleaseAsset com hash que lança remove o arquivo e lança code digest', async () => {
+  const dest = tmpDest();
+  const hashQueLanca = async () => { throw new Error('EIO'); };
+  await assert.rejects(
+    fetchReleaseAsset(goodAsset(), dest, {}, writeAbcd, hashQueLanca),
+    (error) => error.code === 'digest',
+  );
+  assert.equal(fs.existsSync(dest), false);
+});
+
+test('fetchReleaseAsset rejeita digest em maiúsculas com code digest e remove o arquivo', async () => {
+  const hex = crypto.createHash('sha256').update('abcd').digest('hex');
+  for (const digest of [`sha256:${hex.toUpperCase()}`, `SHA256:${hex}`]) {
+    const dest = tmpDest();
+    await assert.rejects(
+      fetchReleaseAsset(goodAsset({ digest }), dest, {}, writeAbcd),
+      (error) => error.code === 'digest',
+    );
+    assert.equal(fs.existsSync(dest), false);
+  }
+});
+
+test('fetchReleaseAsset: rm que falha em failAsset ainda lança o code digest', async () => {
+  const dest = tmpDest();
+  // Diretório não vazio em dest: rmSync sem recursive lança, e a função precisa seguir com o code pedido.
+  const download = async (url, file) => {
+    fs.mkdirSync(file);
+    fs.writeFileSync(nodePath.join(file, 'preso.txt'), 'x');
+  };
+  try {
+    await assert.rejects(
+      fetchReleaseAsset(goodAsset({ size: 0, digest: 'sha256:xyz' }), dest, {}, download),
+      (error) => error.code === 'digest',
+    );
+  } finally {
+    fs.rmSync(nodePath.dirname(dest), { recursive: true, force: true });
+  }
+});
+
+test('sha256File devolve o hash hex do conteúdo', async () => {
+  const dest = tmpDest();
+  fs.writeFileSync(dest, 'abcd');
+  assert.equal(await sha256File(dest), crypto.createHash('sha256').update('abcd').digest('hex'));
+});
+
+test('fetchReleaseAsset aceita o Mesa.exe legado com digest certo', async () => {
+  const asset = findReleaseAsset([
+    { name: 'Mesa.exe', browser_download_url: `${BASE}Mesa.exe`, size: 4, digest: sha256Of('abcd') },
+  ], 'portable');
+  assert.equal(asset.name, 'Mesa.exe');
+  const dest = tmpDest();
+  await fetchReleaseAsset(asset, dest, {}, writeAbcd);
+  assert.equal(fs.existsSync(dest), true);
+});
+
+// Contrato novo: antes, um stat que falhava deixava o arquivo seguir sem conferência.
+// Agora falha fechado com 'digest', porque sem stat não dá para validar o que foi baixado.
+test('falha de stat falha fechado com code digest', async () => {
+  const dest = tmpDest();
+  const naoBaixa = async () => {};
+  await assert.rejects(
+    fetchReleaseAsset(goodAsset(), dest, {}, naoBaixa),
+    (error) => error.code === 'digest',
+  );
+  assert.equal(fs.existsSync(dest), false);
 });

@@ -989,6 +989,10 @@ var MESA_TWITCH_DOM = (function () {
       || (cards || []).some((c) => dentroDe(c, centro) && visivelDe(c)), true);
     const botoes = seguro(() => botoesSemConfirmacao(centro), null);
     const saldo = saldoDoResumo(doc);
+    // Aqui a exclusão do saldo é mais larga que em cardsPorCusto, de propósito. Ela só tira candidatos da contagem;
+    // o candidato ainda precisa casar REDEEM_TEXTO_RE, que um texto só numérico nunca casa. Com o critério de aria,
+    // saldo sem aria igual ao custo daria redeem-varios (teste "saldo 300 no botão do saldo, igual ao custo").
+    // Um card visível continua detectado por cardVisivel e listaFiltroEstrito.
     const comCusto = seguro(() => (botoes || []).filter((b) => numerosDe(normal(textoDe(b))).includes(custo) && !eBotaoSaldo(b, saldo)), null);
     const botaoLista = seguro(() => (botoes || []).some((b) => !(comCusto || []).includes(b)
       && visivelDe(b)

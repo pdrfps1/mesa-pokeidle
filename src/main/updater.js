@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const { spawn } = require('child_process');
 const https = require('https');
 const AppBrand = require('../shared/brand');
@@ -236,24 +237,52 @@ function assetNameFor(kind) {
   return kind === 'installer' ? AppBrand.installerAsset : AppBrand.portableAsset;
 }
 
-// Baixa o asset e confere o tamanho anunciado pela release. Tamanho errado lança erro com code 'size'.
-// Se o stat falhar, segue com o arquivo baixado (como no HEAD).
-async function fetchReleaseAsset(asset, dest, headers, download = downloadToFile) {
+const SHA256_DIGEST_RE = /^sha256:([0-9a-f]{64})$/;
+
+// Hash SHA-256 do arquivo em hex minúsculo, lido em stream para não carregar o .exe inteiro na memória.
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(file);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+// Remove o arquivo baixado e devolve o erro com o code pedido. Se o rm falhar (ex.: EPERM no Windows), segue com o code pedido.
+function failAsset(dest, code) {
+  try { fs.rmSync(dest, { force: true }); } catch { /* segue com o code pedido */ }
+  const error = new Error(code);
+  error.code = code;
+  return error;
+}
+
+// Baixa o asset e confere tamanho e sha256 anunciados pela release. Qualquer falha remove o arquivo e lança com code:
+// 'size' (tamanho errado), 'no-digest' (release sem digest), 'digest' (digest malformado, diferente ou não calculável).
+// Mudança de contrato: stat que falha agora falha fechado com 'digest'. Antes o arquivo seguia sem conferência;
+// sem stat não há como validar o que foi baixado, então não se confia nele.
+async function fetchReleaseAsset(asset, dest, headers, download = downloadToFile, hashFile = sha256File) {
   await download(asset.browser_download_url, dest, headers);
   if (Number.isFinite(asset.size) && asset.size > 0) {
     let size;
     try {
       size = fs.statSync(dest).size;
     } catch {
-      return;
+      throw failAsset(dest, 'digest');
     }
-    if (size !== asset.size) {
-      fs.rmSync(dest, { force: true });
-      const error = new Error('size');
-      error.code = 'size';
-      throw error;
-    }
+    if (size !== asset.size) throw failAsset(dest, 'size');
   }
+  if (asset.digest == null) throw failAsset(dest, 'no-digest');
+  const match = typeof asset.digest === 'string' ? SHA256_DIGEST_RE.exec(asset.digest) : null;
+  if (!match) throw failAsset(dest, 'digest');
+  let actual;
+  try {
+    actual = await hashFile(dest);
+  } catch {
+    throw failAsset(dest, 'digest');
+  }
+  if (String(actual) !== match[1]) throw failAsset(dest, 'digest');
 }
 
 function registerUpdater(deps) {
@@ -334,6 +363,16 @@ function registerUpdater(deps) {
     try {
       await fetchReleaseAsset(asset, downloaded, downloadHeaders);
     } catch (error) {
+      if (error && (error.code === 'digest' || error.code === 'no-digest')) {
+        return {
+          ok: false,
+          status: 'verify',
+          current,
+          latest: latestLabel,
+          releaseUrl,
+          message: 'Não foi possível verificar a atualização. Baixe pela página da release.',
+        };
+      }
       return {
         ok: false,
         status: 'download',
@@ -402,6 +441,7 @@ module.exports = {
   psEscape,
   startDetached,
   fetchReleaseAsset,
+  sha256File,
   compareSemver,
   parseSemver,
   findReleaseAsset,

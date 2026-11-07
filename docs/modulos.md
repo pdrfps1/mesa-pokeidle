@@ -8,6 +8,9 @@ Este documento descreve o que existe hoje para o board de módulos do PokeIdle A
 - Esta entrega cria: o motor puro, os testes, o schema de documentação, um arquivo de exemplo e este documento.
 - Não há gaveta, paleta de comandos, dock flutuante, tema Arena aplicado, som, háptico ou virtualização de baías.
 - A persistência não existe ainda. O formato futuro seria `cfg.board` dentro de `mesa-config.json`, gravado por `save()`.
+- **Não ativo:** `src/shared/board-layout.js` não é usado por nenhum código do app. Só o próprio teste (`board-layout.test.js`) o carrega, conferido por busca no repositório.
+- **Ativo, não confundir:** `src/shared/standby-layout.js` é a regra da Espera e está em uso. É carregado por `src/renderer/index.html` antes de `standby.js` e é chamado por `catalog.js` e `standby.js`. Não é módulo de board nem código morto.
+- **Fora do board, aguarda decisão:** `scripts/debug-cdp.js` está versionado. O dono do projeto ainda precisa decidir se o mantém ou remove.
 
 ## 2. O que o MCP BoardUI faz e o que não faz
 
@@ -198,3 +201,6 @@ Esta entrega não mexeu no board. Para o que mudou na distribuição, veja `proj
 - Dois alvos de `npm run dist`: `PokeIdle-Automation-Setup.exe` e `PokeIdle-Automation.exe`, mais o alias `Mesa.exe`.
 - Nome em `src/shared/brand.js`, conferido com o `package.json` pelo teste.
 - Atualizador em dois modos (instalado e portable). Versões até 0.3.2 só procuram `Mesa.exe` na release; por isso a release precisa publicar os três arquivos.
+- Atualizador (`src/main/updater.js`): `fetchReleaseAsset` confere o tamanho e o SHA-256 contra o `digest` da release antes de executar, nos dois modos. Falha ou digest ausente devolve `status: 'verify'` ao registro, e o arquivo baixado é apagado. `sha256File(path)` é exportada. Os testes estão em `src/main/updater.test.js`. Limite: a conferência não cobre repositório ou token comprometidos (pendências D1 e D2 em `projeto.md`).
+- Build (`scripts/dist.js`): exporta `packageForBuilder`, `criarRestauro`, `instalarSinais`, `matarArvore`, `tratarErroDoFilho` e `SINAIS`. `main` só roda com `require.main === module`. Usa `spawn` assíncrono, restaura o `package.json` byte a byte nos sinais e no `exit`, e no Windows derruba a árvore com `taskkill /T /F`. Os testes estão em `scripts/dist.test.js` (16) e entram no script `test`.
+- Não verificado no build: Ctrl+C real num build completo, derrubada real de árvore de processos no Windows (os testes usam sinais, `taskkill` e filho simulados) e um `npm run dist` completo depois da troca para `spawn`.

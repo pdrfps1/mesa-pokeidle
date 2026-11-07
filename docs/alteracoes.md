@@ -1,5 +1,90 @@
 # Alterações
 
+## 2026-11-07 — 0.4.0, correções da revisão · download verificado e build seguro
+
+> O atualizador confere o SHA-256 da release antes de executar o arquivo baixado, e o build devolve o `package.json` ao estado original mesmo quando é interrompido. Release sem digest é recusada. Nada disso foi testado com download real nem com build completo.
+
+### Destaques do patch
+- **Download verificado:** tamanho e SHA-256 são conferidos antes de qualquer execução, nos dois modos de atualização.
+- **Build seguro:** `package.json` restaurado byte a byte em interrupção, e a árvore do build é derrubada no Windows.
+- **Redeem por texto:** só um comentário e quatro testes novos. A lógica de clique não mudou.
+
+### O que mudou
+- `src/main/updater.js`: `fetchReleaseAsset` confere tamanho e digest, nesta ordem. Digest ausente, malformado ou diferente, erro ao ler o hash e falha de stat apagam o arquivo baixado. `registerUpdater` devolve `status: 'verify'`, com «Não foi possível verificar a atualização. Baixe pela página da release.» e o link da release. Nada é executado e o app não fecha. `sha256File` é exportada.
+- `scripts/dist.js`: refatorado em funções exportadas, e `main` só roda como script. Usa `spawn` no lugar de `spawnSync`. Restaura o `package.json` byte a byte (BOM e CRLF preservados) no fim normal, em erro de spawn, em SIGINT, SIGTERM, SIGBREAK, SIGHUP e no evento `exit`. No Windows, derruba a árvore com `taskkill /T /F`, com fallback para `child.kill()`. Erro do filho só restaura e sai com 1 se o spawn nem iniciou. Avisa se o `package.json` já chega com `electron` em devDependencies.
+- `scripts/dist.test.js` (novo): 16 testes, incluídos no script `test`. Não toca no `package.json` real.
+- `src/shared/twitch-dom.js`: só comentário acima de `comCusto` em `acharRedeemPorTexto`.
+- `src/shared/twitch-dom.test.js`: 4 testes novos com custo igual ao saldo sem `aria-label`.
+- Versão: continua 0.4.0, ainda não lançada. Esta entrega não cria número novo.
+
+### Por quê
+O atualizador executava o instalador ou o portátil conferindo só o tamanho, sem hash. O build deixava o `package.json` trocado se fosse morto no meio, e no Windows o `spawnSync` podia deixar `makensis` e `7z` órfãos. O comentário do Redeem por texto registra por que a exclusão do saldo é mais larga em `comCusto` do que em `cardsPorCusto`, para que ninguém a estreite sem saber o motivo.
+
+### Arquivos de produto
+Lista pelo `git diff` contra 545e4ee:
+- `dashboard/src/main/updater.js` e `dashboard/src/main/updater.test.js`.
+- `dashboard/scripts/dist.js` e `dashboard/scripts/dist.test.js` (novo).
+- `dashboard/src/shared/twitch-dom.js` (só comentário) e `dashboard/src/shared/twitch-dom.test.js`.
+- `dashboard/package.json`: só a linha do script `test`.
+- Documentação: `dashboard/docs/projeto.md`, `dashboard/docs/modulos.md` e `dashboard/docs/alteracoes.md`.
+
+### Testes
+- `npm test` em `dashboard/`: **965** passaram, 0 falharam (os 936 anteriores e 29 novos em saldo líquido, já descontado o teste do atualizador que tolerava falha de stat e foi trocado). Número relatado pelo agente principal. Esta documentação não rodou a suíte.
+- Atualizador: digest certo e errado, malformado (`sha256:xyz`, `md5:`), ausente e `null`, maiúsculas, hash que lança, rm que falha, `sha256File`, `Mesa.exe` legado com digest certo, e stat que falha (falha fechado com `digest`).
+- `scripts/dist.test.js`: 16 testes com sinais, `taskkill` e filho simulados.
+- Redeem por texto, custo igual ao saldo sem aria: via texto com 1 clique e sem clicar no saldo; card visível em `retrato.card` leva a `redeem-lista` com 0 clique; dois botões «Redeem 300» dão `redeem-varios` com 0 clique; nenhum Redeem dá `redeem-nenhum` com 0 clique.
+- Release v0.3.2: o agente principal conferiu que o único asset (`Mesa.exe`) tem `digest`.
+
+### Não confirmado
+- Ctrl+C real num build completo.
+- Derrubada real de árvore de processos no Windows. Os testes usam sinais, `taskkill` e filho simulados.
+- `npm run dist` completo depois da troca de `spawnSync` por `spawn`.
+- Caminho `verify` de `registerUpdater`: confirmado só por leitura do código, porque a chamada HTTP não é injetável.
+- Download real de uma release com digest, de ponta a ponta.
+- Arquivo `.part` que `downloadToFile` pode deixar em erro no meio do download. Sugestão do revisor, sem execução; é só lixo em disco e fica fora desta entrega.
+
+### Limites conhecidos
+- O digest vem da mesma API que a URL do asset. Protege contra download corrompido ou adulterado no caminho, não contra repositório ou token de publicação comprometidos. Só assinatura resolveria isso (ver pendência D2).
+- Versões instaladas antes desta correção não conferem o digest.
+- Kill forçado do build (TerminateProcess) não passa pelos handlers. Nesse caso `electron` fica em devDependencies. A recuperação é devolver para dependencies, conferindo com `git diff package.json`. Não use `git checkout -- package.json`, que descartaria mudanças não commitadas.
+- Redeem por texto, decisão registrada: se o card com o custo aparece no detalhe, mas não está em `retrato.card` nem na lista coletada antes do clique, o Redeem por texto ainda clica em «Redeem N». É o comportamento projetado.
+
+### Pendências
+- **D1:** release sem `digest` é recusada, padrão seguro adotado. Alternativa, não adotada: aceitar só o tamanho quando o digest faltar, o que é mais tolerante e mantém a brecha.
+- **D2:** a garantia contra repositório ou token comprometido exige assinatura (Authenticode com certificado, ou manifesto assinado com chave embutida). Fora desta entrega.
+- **D3:** `scripts/debug-cdp.js` está versionado. Manter ou remover, decisão do dono do projeto.
+
+### Patch note
+
+**Patch 0.4.0, correções da revisão · download verificado e build seguro · 07/11/2026**
+
+Resumo: o atualizador confere o SHA-256 antes de executar o arquivo baixado, e o build devolve o `package.json` ao estado original mesmo quando é interrompido. Release sem digest é recusada. Nada disso foi testado com download real ou build completo.
+
+**Atualizador**
+- Conferência: tamanho apenas → tamanho e SHA-256 contra o digest da release, antes de executar, nos dois modos. *Um arquivo corrompido ou adulterado no caminho não roda.*
+- Digest ausente ou malformado: o arquivo é apagado e o app mostra «Não foi possível verificar a atualização. Baixe pela página da release.». *Nada é executado e o app não fecha.*
+
+**Build**
+- Restauro do `package.json`: só no `finally` → byte a byte em erro, SIGINT, SIGTERM, SIGBREAK, SIGHUP e no `exit`. *Uma interrupção não deixa o `electron` fora de `dependencies`.*
+- Árvore do build no Windows: o filho direto morria → `taskkill /T /F` derruba tudo. *Não sobra `makensis` nem `7z` rodando.*
+- Execução: `spawnSync` → `spawn` assíncrono. *Os sinais passam a ser tratados enquanto o electron-builder roda.*
+
+**Redeem por texto**
+- Comentário acima de `comCusto` explica a exclusão do saldo, mais larga que em `cardsPorCusto`. *Quem estreitar essa exclusão precisa saber o motivo.* A lógica de clique não mudou.
+
+**Correções de bugs**
+- [Correção] Atualização baixada era conferida só pelo tamanho. Agora o SHA-256 também é conferido antes da execução.
+- [Correção] O `package.json` podia ficar com `electron` em devDependencies depois de uma interrupção do build.
+- [Correção] No Windows, a árvore do build (`makensis`, `7z`) podia ficar órfã.
+
+**Pendências**
+- D1: release sem digest é recusada. Alternativa não adotada: aceitar só o tamanho.
+- D2: garantia contra repositório ou token comprometido exige assinatura. Fora desta entrega.
+- D3: `scripts/debug-cdp.js`, versionado, manter ou remover.
+
+**Não verificado**
+- Ctrl+C real num build, derrubada real de árvore no Windows, build completo depois da troca para `spawn`, download real com digest de ponta a ponta.
+
 ## 2026-11-07 — Patch «Módulos» · motor de layout e especificação
 
 > O board de módulos ganha o motor puro de layout (`src/shared/board-layout.js`), com testes, contrato JSON e especificação. Nenhuma tela mudou: o motor não está ligado à Mesa nem à Espera. O tema Arena segue como proposta, não aplicada, e o Vigília continua padrão.
