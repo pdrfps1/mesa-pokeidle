@@ -1,5 +1,34 @@
 # Alterações
 
+## 2026-11-07 — README no formato de vitrine · PokeIdle Automation
+
+> Só documentação: o `README.md` ganha a apresentação do PokeIdle Automation (cabeçalho, badges, seções na ordem de uso, tabelas e dúvidas frequentes). Nenhum código mudou. A versão publicada segue 0.3.2, com `Mesa.exe`, e a 0.4.0 continua sem release.
+
+### O que mudou
+- `dashboard/README.md`: reescrito. Cabeçalho centrado com badges e imagem principal, seções de baixar, primeiro uso, Bônus da Twitch, a tela, ajustes, atualizações, dados, dúvidas, compilação e aviso.
+- A descrição de cada recurso sai do código e de `docs/projeto.md` e `docs/alteracoes.md`. Itens sem fonte ficaram de fora, e o que ainda não foi confirmado está marcado como tal.
+
+### Por quê
+Pedido do dono do projeto: apresentar o app atual no README com a mesma organização de um projeto de referência, sem copiar o texto dele.
+
+### Arquivos de produto
+Nenhum arquivo de código, teste, `package.json` ou imagem foi alterado. Só `dashboard/README.md` e esta entrada.
+
+### Não confirmado
+- Renderização do README no GitHub (badges e âncoras): não conferida no navegador.
+- Os números da suíte de testes não foram rodados nesta entrega.
+
+### Patch note
+
+**Documentação · README do PokeIdle Automation · 07/11/2026**
+
+Resumo: o README ganha a apresentação do app atual, com as mesmas seções de uso. Sem mudança de código.
+
+**Documentação**
+- [Novo] Cabeçalho com badges, imagem principal e links de navegação.
+- [Novo] Seções de tela, ajustes, atualizações, dados e dúvidas frequentes.
+- [Ajuste] Instruções de instalação separam a versão publicada (0.3.2, `Mesa.exe`) da 0.4.0, que ainda não saiu.
+
 ## 2026-11-07 — 0.4.0, correções da revisão · download verificado e build seguro
 
 > O atualizador confere o SHA-256 da release antes de executar o arquivo baixado, e o build devolve o `package.json` ao estado original mesmo quando é interrompido. Release sem digest é recusada. Nada disso foi testado com download real nem com build completo.
