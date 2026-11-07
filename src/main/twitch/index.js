@@ -85,12 +85,12 @@ function registerTwitch(deps) {
 
   // A página manda fatos a cada 3 s e, quando um comando termina, o resultado.
   ipcMain.on('twitch:pagina', (event, payload) => {
-    const i = janelas.bayOf(event.sender);
-    if (i < 0) return;
+    const k = janelas.streamOf(event.sender);
+    if (k < 0) return;
     const fatos = P.limparFatos(payload && payload.fatos);
-    if (fatos) controller.pagina(i, fatos);
+    if (fatos) controller.pagina(k, fatos);
     const resultado = P.limparResultado(payload && payload.resultado);
-    if (resultado) controller.resultado(i, resultado);
+    if (resultado) controller.resultado(k, resultado);
   });
 
   ipcMain.handle('twitch:entrar', (event, i) => {
@@ -100,9 +100,11 @@ function registerTwitch(deps) {
     return controller.snapshot();
   });
 
-  ipcMain.handle('twitch:mostrar', (event, i, on) => {
+  // A vaga s (0 a 3) é a live da baía; sem s válido, vale a vaga 0.
+  ipcMain.handle('twitch:mostrar', (event, i, on, s) => {
     if (!isUi(event) || !bayValida(i)) return controller.snapshot();
-    controller.mostrar(i, on === true);
+    const vaga = Number.isInteger(s) && s >= 0 && s <= 3 ? s : 0;
+    controller.mostrar(i + BAYS * vaga, on === true);
     return controller.snapshot();
   });
 

@@ -188,7 +188,7 @@ function mount() {
   root.replaceChildren();
   const dock = el('nav', 'dock');
   ui.dock = dock;
-  dock.setAttribute('aria-label', 'Mesa');
+  dock.setAttribute('aria-label', 'Navegação principal');
   ui.mesaBtn = el('button');
   ui.mesaBtn.type = 'button';
   ui.mesaBtn.setAttribute('aria-label', 'Automações');
@@ -220,7 +220,15 @@ function mount() {
   ui.pageTitle = el('h1', 'page-title', 'Automações');
   ui.pageScope = el('p', 'page-scope', 'Neste computador');
   const pageHead = el('header', 'page-head');
-  pageHead.append(ui.pageTitle, ui.pageScope);
+  const brandMark = document.createElement('img');
+  brandMark.className = 'brand-mark';
+  brandMark.src = '../assets/brand/logo-64.png';
+  brandMark.width = 28;
+  brandMark.height = 28;
+  brandMark.alt = AppBrand.productName;
+  brandMark.title = AppBrand.productName;
+  brandMark.decoding = 'async';
+  pageHead.append(brandMark, ui.pageTitle, ui.pageScope);
   ui.finding = el('p', 'finding mesa-finding');
   ui.finding.hidden = true;
   ui.finding.setAttribute('aria-live', 'polite');
@@ -655,7 +663,7 @@ function mount() {
   const cardAppearance = el('article', 'settings-card settings-card-appearance card card-border mesa-panel');
   cardAppearance.append(
     settingsCardTitle('Preferências de Aparência', ['sol', 'nuvem', 'lua']),
-    settingsField('Tema', 'Tema escuro ou claro da casca da Mesa. Não muda o modo noturno do jogo.', shellJoin),
+    settingsField('Tema', 'Tema escuro ou claro da casca do app. Não muda o modo noturno do jogo.', shellJoin),
     settingsField('Modo noturno', 'O tema escuro que o jogo já oferece.', ui.night),
   );
 

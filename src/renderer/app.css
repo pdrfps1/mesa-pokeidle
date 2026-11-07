@@ -97,11 +97,11 @@ body {
   font: 400 var(--fs-body)/1.45 var(--font);
   -webkit-font-smoothing: antialiased;
 }
-button, input { font: inherit; color: inherit; }
-button:not(.btn):not(.toggle) { cursor: pointer; }
-button:not(.btn):not(.toggle):disabled { cursor: not-allowed; opacity: 0.5; }
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; }
-h1, h2, p { margin: 0; }
+button:where(:not(#mesa-react *)), input:where(:not(#mesa-react *)) { font: inherit; color: inherit; }
+button:not(.btn):not(.toggle):where(:not(#mesa-react *)) { cursor: pointer; }
+button:not(.btn):not(.toggle):disabled:where(:not(#mesa-react *)) { cursor: not-allowed; opacity: 0.5; }
+:focus-visible:where(:not(#mesa-react *)) { outline: 2px solid var(--color-accent); outline-offset: 2px; }
+h1:where(:not(#mesa-react *)), h2:where(:not(#mesa-react *)), p:where(:not(#mesa-react *)) { margin: 0; }
 /* Números na própria família, com algarismos de largura fixa. */
 .num { font-family: var(--font); font-variant-numeric: tabular-nums; font-weight: 600; }
 .visually-hidden {
@@ -237,6 +237,7 @@ nav.dock button:active { transform: scale(0.97); }
 .view { display: flex; flex-direction: column; gap: var(--gap); min-height: 0; min-width: 0; flex: 1 1 auto; }
 .view[hidden] { display: none !important; }
 
+.brand-mark { width: 28px; height: 28px; flex: none; border-radius: 50%; display: block; }
 /* Barra de comando: título, contagens que não são zero e, quando houver, o aviso. Sem régua. */
 .page-head {
   display: flex;

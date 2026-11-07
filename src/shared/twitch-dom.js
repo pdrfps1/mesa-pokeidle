@@ -567,14 +567,16 @@ var MESA_TWITCH_DOM = (function () {
 
   // Cards do custo: botões só com o número, igual ao custo pedido (SO_NUMERO no texto inteiro, um número só).
   // Assim "Redeem 300" num detalhe não vira card. Sem candidato aninhado. Ordem do DOM.
-  function cardsPorCusto(centro, custo) {
+  // Botão de saldo sai da lista só se tiver aria-label preenchido: dado do log real, o card do custo não tem aria
+  // e o botão de saldo tem. Só presença do atributo, sem ler o texto. Sem aria no saldo, vale a regra antiga.
+  function cardsPorCusto(centro, custo, saldo = null) {
     if (!centro) return [];
     const alvo = Number(custo);
     const achados = botoesSemConfirmacao(centro).filter((b) => {
       const t = normal(textoDe(b));
       if (!SO_NUMERO.test(t)) return false;
       const nums = numerosDe(t);
-      return nums.length === 1 && nums[0] === alvo;
+      return nums.length === 1 && nums[0] === alvo && !(eBotaoSaldo(b, saldo) && atributoPreenchido(b, 'aria-label'));
     });
     return maisInternos(achados);
   }
@@ -944,13 +946,15 @@ var MESA_TWITCH_DOM = (function () {
     }, { ...REDEEM_DESC_VAZIO });
   }
 
-  // Saldo lido do resumo (mesma fonte de lerFatos). Só número simples; ilegível = null, e nada é excluído.
-  function saldoNumeroDe(doc) {
+  // Saldo lido do resumo (mesma fonte de lerFatos). Número simples vira { numero, abreviado: '' }; texto abreviado
+  // (ex.: 1.2K) vira { numero: null, abreviado }; ilegível = null, e nada é excluído.
+  function saldoDoResumo(doc) {
     return seguro(() => {
       const texto = primeiroTexto(doc, SELETORES.saldo) || textoDe(primeiro(doc, SELETORES.botaoPontos));
       if (!saldoLidoDe(texto)) return null;
       const m = /^(\d{1,3}(?:[.,\s]\d{3})+|\d+)$/.exec(String(texto).trim());
-      return m ? Number(m[1].replace(/\D/g, '')) : null;
+      if (m) return { numero: Number(m[1].replace(/\D/g, '')), abreviado: '' };
+      return { numero: null, abreviado: normal(texto) };
     }, null);
   }
 
@@ -966,6 +970,14 @@ var MESA_TWITCH_DOM = (function () {
     return /^[\d.,\s]+$/.test(t) && numerosDe(t).length === 1 && numerosDe(t)[0] === saldo;
   }
 
+  // Botão do saldo: com saldo abreviado, o texto normal tem que ser igual ao do resumo; senão, o número exato.
+  // Saldo null (ilegível) não exclui nenhum botão.
+  function eBotaoSaldo(b, saldo) {
+    if (!saldo) return false;
+    if (saldo.abreviado) return normal(textoDe(b)) === saldo.abreviado;
+    return eSaldoExato(b, saldo.numero);
+  }
+
   // Redeem por texto. Condições, na ordem: centro de cabeçalho, detalhe com folha nova, nenhuma lista visível,
   // um único botão com o custo, novo no detalhe, visível, texto Redeem/Resgatar + custo, sem atributo de dados.
   // Fail-closed: exceção ao avaliar a lista conta como lista presente; exceção no alvo conta como oculto.
@@ -976,12 +988,12 @@ var MESA_TWITCH_DOM = (function () {
     const cardVisivel = seguro(() => (!!retrato && !!retrato.card && visivelDe(retrato.card))
       || (cards || []).some((c) => dentroDe(c, centro) && visivelDe(c)), true);
     const botoes = seguro(() => botoesSemConfirmacao(centro), null);
-    const comCusto = seguro(() => (botoes || []).filter((b) => numerosDe(normal(textoDe(b))).includes(custo)), null);
-    const saldo = saldoNumeroDe(doc);
+    const saldo = saldoDoResumo(doc);
+    const comCusto = seguro(() => (botoes || []).filter((b) => numerosDe(normal(textoDe(b))).includes(custo) && !eBotaoSaldo(b, saldo)), null);
     const botaoLista = seguro(() => (botoes || []).some((b) => !(comCusto || []).includes(b)
       && visivelDe(b)
       && /\d/.test(normal(textoDe(b)))
-      && !(saldo !== null && eSaldoExato(b, saldo))), true);
+      && !eBotaoSaldo(b, saldo)), true);
     const lista = !botoes || !comCusto || seguro(() => listaFiltroEstrito(centro), true) || cardVisivel || botaoLista;
     const centroOk = seguro(() => centroPorCabecalho(doc) === centro, false);
     const lista0 = comCusto || [];
@@ -1122,7 +1134,7 @@ var MESA_TWITCH_DOM = (function () {
   // Fallback por custo: abre cada card do custo, confere o título no detalhe (folha nova) e só então segue para o Redeem.
   // Card que não confere: fecha, reabre a lista e vai ao próximo. Nenhum clique além disso.
   // ctx guarda o diagnóstico do card clicado (antes do clique).
-  async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx) {
+  async function resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx, saldo) {
     const { titulo, custo } = pedido;
     const diag = () => ({
       estado: 'falhou',
@@ -1130,7 +1142,7 @@ var MESA_TWITCH_DOM = (function () {
       vistos: custosVistos(achaCentro()),
       dialogos: dialogosDiag(doc, titulo, null),
     });
-    const todos = cardsPorCusto(achaCentro(), custo);
+    const todos = cardsPorCusto(achaCentro(), custo, saldo);
     if (!todos.length) {
       ctx.lista = listaDiag(achaCentro(), custo);
       const r = diag();
@@ -1143,7 +1155,7 @@ var MESA_TWITCH_DOM = (function () {
     }
     let indice = 0;
     for (let tentativas = 0; tentativas < MAX_TENTATIVAS_CARD; tentativas += 1) {
-      const atuais = cardsPorCusto(achaCentro(), custo);
+      const atuais = cardsPorCusto(achaCentro(), custo, saldo);
       const habilitados = atuais.filter((c) => !desabilitado(c));
       if (indice >= habilitados.length) break;
       if (!achaCentro()) return semCentro('confirmar');
@@ -1192,6 +1204,8 @@ var MESA_TWITCH_DOM = (function () {
     const achaCentro = () => centroAberto(doc);
     // Saldo lido do resumo antes de qualquer clique: só para o diagnóstico (folhas.saldo).
     ctx.saldo = seguro(() => numerosDe(textoDe(resumo)), []);
+    // Saldo lido do resumo uma vez, antes de abrir o centro. Passa adiante para as buscas por custo.
+    const saldo = saldoDoResumo(doc);
     // Diagnóstico: havia diálogo antes do clique no resumo?
     let dialogoAntes = false;
     try { dialogoAntes = !!doc.querySelector('[role="dialog"]'); } catch { dialogoAntes = false; }
@@ -1221,7 +1235,7 @@ var MESA_TWITCH_DOM = (function () {
     // Para quando acha pelo título ou quando já há card do custo pedido (o título só aparece depois de abrir o card).
     await deps.esperar(() => {
       busca = buscarRecompensa(doc, pedido.titulo, achaCentro(), pedido.custo);
-      return busca.achado || (!busca.ambigua && cardsPorCusto(achaCentro(), pedido.custo).length > 0);
+      return busca.achado || (!busca.ambigua && cardsPorCusto(achaCentro(), pedido.custo, saldo).length > 0);
     }, 6000);
     if (!achaCentro()) return semCentro('buscar');
     ctx.rejeitado = busca.rejeitado ? rejeitadoDiag(busca.rejeitado, normal(pedido.titulo), pedido.custo) : null;
@@ -1231,7 +1245,7 @@ var MESA_TWITCH_DOM = (function () {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'recompensa-ambigua', vistos };
     }
-    if (!item) return resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx);
+    if (!item) return resgatarPorCusto(doc, pedido, deps, achaCentro, semCentro, ctx, saldo);
     if (desabilitado(item)) {
       await fecharCentro(doc, deps);
       return { estado: 'falhou', motivo: 'indisponivel' };

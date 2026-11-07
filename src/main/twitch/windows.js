@@ -1,6 +1,6 @@
 'use strict';
 
-// As BrowserWindow da Twitch, uma por baía, cada uma na sua partição persist:mesa-twitch-N.
+// As BrowserWindow da Twitch: uma por vaga (live) de cada baía. A vaga k = i + 4*s usa a partição da baía i (persist:mesa-twitch-N).
 const P = require('./points');
 
 const LARGURA = 1280;
@@ -28,15 +28,15 @@ function urlDeOutroSite(url) {
   } catch { return false; }
 }
 
-// Janela de login da Twitch. Se entrar uma segunda forma (navegador do sistema), ela entra no lugar daqui.
-function criarJanelaTwitch(BrowserWindow, { i, part, preloadPath }) {
+// Janela da Twitch de uma vaga. Se entrar uma segunda forma (navegador do sistema), ela entra no lugar daqui.
+function criarJanelaTwitch(BrowserWindow, { k, part, preloadPath }) {
   return new BrowserWindow({
     show: false,
     width: LARGURA,
     height: ALTURA,
     minWidth: 900,
     minHeight: 600,
-    title: `Twitch · Baía ${i + 1}`,
+    title: `Twitch · Baía ${(k % 4) + 1} · Live ${Math.floor(k / 4) + 1}`,
     autoHideMenuBar: true,
     backgroundColor: '#161719',
     skipTaskbar: true,
@@ -63,7 +63,7 @@ function bloqueiaSubframe(details) {
   return !urlDaTwitch(details.url);
 }
 
-// Carga interrompida por outra navegação (ERR_ABORTED) é normal. Outros erros viram estado da baía.
+// Carga interrompida por outra navegação (ERR_ABORTED) é normal. Outros erros viram estado da vaga.
 function erroDeCargaIgnoravel(erro) {
   return !!erro && (erro.code === 'ERR_ABORTED' || erro.errno === -3);
 }
@@ -77,26 +77,26 @@ function createTwitchWindows(deps) {
   const crashes = new Map();
   let encerrando = false;
 
-  function entradaDe(i) {
-    return wins.get(i) || null;
+  function entradaDe(k) {
+    return wins.get(k) || null;
   }
 
-  function existe(i) {
-    return wins.has(i);
+  function existe(k) {
+    return wins.has(k);
   }
 
-  function url(i) {
-    const e = entradaDe(i);
+  function url(k) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed() || e.win.webContents.isDestroyed()) return '';
     return e.win.webContents.getURL();
   }
 
-  function tratarErroCarga(i, erro) {
+  function tratarErroCarga(k, erro) {
     if (erroDeCargaIgnoravel(erro)) return;
-    if (typeof aoErroPagina === 'function') aoErroPagina(i);
+    if (typeof aoErroPagina === 'function') aoErroPagina(k);
   }
 
-  function guardasDaJanela(i, win, entrada) {
+  function guardasDaJanela(k, win, entrada) {
     const wc = win.webContents;
     wc.on('will-navigate', (event, destino) => {
       if (urlDaTwitch(destino)) return;
@@ -118,63 +118,63 @@ function createTwitchWindows(deps) {
     });
     wc.on('render-process-gone', () => {
       const agora = Date.now();
-      const recentes = (crashes.get(i) || []).filter((t) => agora - t < JANELA_CRASH_MS);
+      const recentes = (crashes.get(k) || []).filter((t) => agora - t < JANELA_CRASH_MS);
       if (recentes.length >= LIMITE_CRASH) {
-        crashes.set(i, recentes);
+        crashes.set(k, recentes);
         return;
       }
       recentes.push(agora);
-      crashes.set(i, recentes);
+      crashes.set(k, recentes);
       setTimeout(() => {
-        if (wins.get(i) !== entrada || win.isDestroyed() || wc.isDestroyed()) return;
+        if (wins.get(k) !== entrada || win.isDestroyed() || wc.isDestroyed()) return;
         wc.reload();
       }, ESPERA_RECARGA_CRASH_MS);
     });
     win.on('close', (event) => {
-      if (!encerrando && querManter(i)) {
+      if (!encerrando && querManter(k)) {
         event.preventDefault();
-        esconder(i, entrada.modo);
-        aoEsconder(i);
+        esconder(k, entrada.modo);
+        aoEsconder(k);
       }
     });
     win.on('closed', () => {
-      if (wins.get(i) !== entrada) return;
-      wins.delete(i);
-      if (!encerrando) aoFechar(i);
+      if (wins.get(k) !== entrada) return;
+      wins.delete(k);
+      if (!encerrando) aoFechar(k);
     });
   }
 
-  function abrir(i, destino, { modo, visivel }) {
-    if (wins.has(i)) return;
-    const part = catalog.twitchPartitions[i];
+  function abrir(k, destino, { modo, visivel }) {
+    if (wins.has(k)) return;
+    const part = catalog.twitchPartitions[k % 4];
     prepareSession(part);
-    const win = criarJanelaTwitch(BrowserWindow, { i, part, preloadPath });
+    const win = criarJanelaTwitch(BrowserWindow, { k, part, preloadPath });
     const entrada = { win, modo };
-    wins.set(i, entrada);
+    wins.set(k, entrada);
     win.webContents.setAudioMuted(true);
     win.webContents.setBackgroundThrottling(false);
-    guardasDaJanela(i, win, entrada);
+    guardasDaJanela(k, win, entrada);
     // A navegação pode ser trocada por outra (redirect) e o Electron rejeita a antiga: isso não é falha.
-    win.loadURL(destino).catch((erro) => tratarErroCarga(i, erro));
-    if (visivel) mostrar(i);
-    else esconder(i, modo);
+    win.loadURL(destino).catch((erro) => tratarErroCarga(k, erro));
+    if (visivel) mostrar(k);
+    else esconder(k, modo);
   }
 
-  function navegar(i, destino) {
-    const e = entradaDe(i);
+  function navegar(k, destino) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed()) return;
     // Mesmo caso de abrir: navegação substituída não é falha.
-    e.win.loadURL(destino).catch((erro) => tratarErroCarga(i, erro));
+    e.win.loadURL(destino).catch((erro) => tratarErroCarga(k, erro));
   }
 
-  function recarregar(i) {
-    const e = entradaDe(i);
+  function recarregar(k) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed()) return;
     e.win.webContents.reload();
   }
 
-  function mostrar(i) {
-    const e = entradaDe(i);
+  function mostrar(k) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed()) return;
     const win = e.win;
     win.setFocusable(true);
@@ -185,8 +185,8 @@ function createTwitchWindows(deps) {
     win.focus();
   }
 
-  function esconder(i, modo) {
-    const e = entradaDe(i);
+  function esconder(k, modo) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed()) return;
     e.modo = modo;
     const win = e.win;
@@ -201,28 +201,30 @@ function createTwitchWindows(deps) {
     win.setSkipTaskbar(true);
   }
 
-  function fechar(i) {
-    const e = entradaDe(i);
+  function fechar(k) {
+    const e = entradaDe(k);
     if (!e) return;
-    wins.delete(i);
+    wins.delete(k);
     if (!e.win.isDestroyed()) e.win.destroy();
   }
 
-  function enviar(i, cmd) {
-    const e = entradaDe(i);
+  function enviar(k, cmd) {
+    const e = entradaDe(k);
     if (!e || e.win.isDestroyed() || e.win.webContents.isDestroyed()) return;
     e.win.webContents.send('twitch:comando', cmd);
   }
 
-  function bayOf(contents) {
+  // Devolve a vaga k da janela que enviou a mensagem, ou -1.
+  function streamOf(contents) {
     if (!contents || contents.isDestroyed()) return -1;
-    for (const [i, e] of wins) {
-      if (!e.win.isDestroyed() && e.win.webContents.id === contents.id) return i;
+    for (const [k, e] of wins) {
+      if (!e.win.isDestroyed() && e.win.webContents.id === contents.id) return k;
     }
     return -1;
   }
 
   // Lê só o cookie "login" (D1). Valor só em memória: nunca vai para log nem para disco.
+  // Recebe a baía (partição); as vagas dela compartilham a mesma conta.
   function lerLogin(i) {
     const part = catalog.twitchPartitions[i];
     if (!part) return Promise.resolve('');
@@ -236,6 +238,7 @@ function createTwitchWindows(deps) {
       .catch(() => null);
   }
 
+  // Limpa a partição da baía i (recebe a baía, não a vaga).
   function limpar(i) {
     const part = catalog.twitchPartitions[i];
     const ses = session.fromPartition(part);
@@ -261,7 +264,7 @@ function createTwitchWindows(deps) {
     esconder,
     fechar,
     enviar,
-    bayOf,
+    streamOf,
     lerLogin,
     limpar,
     encerrar,

@@ -508,7 +508,142 @@ function limparResultado(raw) {
   };
 }
 
+// Multi-live (até 4 vagas por baía). Helpers puros: escolherResgate segue igual; aqui só se decide entre lives.
+const STREAMS_POR_BAIA = 4;
+// Motivos que pausam só aquele canal (falhasCanal). Os demais seguem pausando a baía.
+const MOTIVOS_DO_CANAL = ['sem-recompensa', 'indisponivel', 'recompensa-ambigua', 'pede-texto'];
+const JANELA_MEDIA_MS = 3600000;
+const MEDIR_MIN_MS = 900000;
+
+function normalizarLogin(v) {
+  return typeof v === 'string' ? v.trim().toLowerCase() : '';
+}
+
+// Prioridade: escolhidos elegíveis, atuais elegíveis, depois o resto por espectadores. Canal já numa vaga fica nela.
+// Devolve array de tamanho n com '' em vaga vazia. Com n = 1 e sem escolhidos, equivale a escolherCanal.
+function escolherCanais(oficiais, escolhidos, atuais, n) {
+  const total = Number.isInteger(n) && n >= 1 ? Math.min(n, STREAMS_POR_BAIA) : 1;
+  const lista = Array.isArray(oficiais) ? oficiais.filter(canalElegivel) : [];
+  const elegiveis = new Set(lista.map((o) => normalizarLogin(o.login)));
+  const ordem = [];
+  const add = (login) => {
+    if (login && elegiveis.has(login) && !ordem.includes(login)) ordem.push(login);
+  };
+  for (const e of Array.isArray(escolhidos) ? escolhidos : []) add(normalizarLogin(e));
+  for (const a of Array.isArray(atuais) ? atuais : []) add(normalizarLogin(a));
+  const resto = lista.slice().sort((a, b) => {
+    const diff = espectadoresDe(b) - espectadoresDe(a);
+    if (diff !== 0) return diff;
+    const la = normalizarLogin(a.login);
+    const lb = normalizarLogin(b.login);
+    if (la < lb) return -1;
+    if (la > lb) return 1;
+    return 0;
+  });
+  for (const o of resto) add(normalizarLogin(o.login));
+  const desejados = ordem.slice(0, total);
+  const saida = new Array(total).fill('');
+  const usados = new Set();
+  for (let s = 0; s < total; s += 1) {
+    const a = normalizarLogin(Array.isArray(atuais) ? atuais[s] : '');
+    if (a && desejados.includes(a) && !usados.has(a)) {
+      saida[s] = a;
+      usados.add(a);
+    }
+  }
+  for (const login of desejados) {
+    if (usados.has(login)) continue;
+    const vaga = saida.indexOf('');
+    if (vaga < 0) break;
+    saida[vaga] = login;
+    usados.add(login);
+  }
+  return saida;
+}
+
+// Une as falhas da baía com as do canal: vale a de maior "ate" em cada tipo.
+function uniaoFalhas(baia, canal) {
+  const out = { ...(baia || {}) };
+  for (const tipo of Object.keys(canal || {})) {
+    const f = canal[tipo];
+    if (!out[tipo] || (f && f.ate > out[tipo].ate)) out[tipo] = f;
+  }
+  return out;
+}
+
+// Chama escolherResgate uma vez por live (com o saldo e a união de falhas dela). Live com foco (XP, Captura ou Shiny) só gasta
+// nesse tipo; foco desligado em tipos vira espera. Com foco ganha a live focada; depois, o menor saldo.minimo suficiente; empate, a menor vaga.
+// Sem candidato, a espera agregada segue: saldo, sem-saldo-lido, sem-recompensa, pausado, depois as demais e por último foco-desligado.
+function escolherResgateCanais({ streams, falhas, tipos, ...resto }) {
+  const lista = Array.isArray(streams) ? streams : [];
+  const achados = [];
+  const esperas = [];
+  for (const st of lista) {
+    if (!st) continue;
+    // Foco fora de TIPOS é o mesmo que sem foco.
+    const foco = TIPOS.includes(st.foco) ? st.foco : '';
+    if (foco && !(Array.isArray(tipos) && tipos.includes(foco))) {
+      esperas.push('foco-desligado');
+      continue;
+    }
+    const r = escolherResgate({ ...resto, tipos: foco ? [foco] : tipos, saldo: st.saldo || null, falhas: uniaoFalhas(falhas, st.falhasCanal) });
+    if (r.tipo) achados.push({ tipo: r.tipo, titulo: r.titulo, custo: r.custo, s: st.s, canal: st.canal, minimo: st.saldo.minimo, foco: !!foco });
+    else esperas.push(r.espera);
+  }
+  if (achados.length) {
+    achados.sort((a, b) => (Number(b.foco) - Number(a.foco)) || (a.minimo - b.minimo) || (a.s - b.s));
+    const { minimo, foco, ...escolhido } = achados[0];
+    return escolhido;
+  }
+  for (const motivo of ['saldo', 'sem-saldo-lido', 'sem-recompensa', 'pausado']) {
+    if (esperas.includes(motivo)) return { espera: motivo };
+  }
+  return { espera: esperas.find((m) => m !== 'foco-desligado') || (esperas.length ? 'foco-desligado' : 'sem-saldo-lido') };
+}
+
+// Ganho por hora de um canal: janela móvel de 60 min; só altas de saldo.minimo contam; queda refaz a base.
+// Antes de 15 min, medindo e sem taxa (null). Leitura abreviada marca aproximado.
+function medirGanho(estado, { saldo, bauEm }, t) {
+  const e = estado && typeof estado === 'object'
+    ? { ...estado, altas: estado.altas.slice(), baus: estado.baus.slice() }
+    : { base: null, inicio: 0, altas: [], baus: [], bauVisto: 0, aproximado: false };
+  if (saldo && Number.isFinite(saldo.minimo)) {
+    const exato = saldo.exato !== false;
+    if (!e.inicio) e.inicio = t;
+    // Só leitura exata define a base e conta altas e quedas. Abreviada é piso: não redefine a base nem zera a taxa.
+    if (exato) {
+      if (e.base === null) {
+        e.base = saldo.minimo;
+      } else if (saldo.minimo > e.base) {
+        e.altas.push({ em: t, delta: saldo.minimo - e.base });
+        e.base = saldo.minimo;
+      } else if (saldo.minimo < e.base) {
+        e.base = saldo.minimo;
+      }
+    }
+    e.aproximado = !exato;
+  }
+  if (Number.isFinite(bauEm) && bauEm > e.bauVisto) {
+    e.baus.push(bauEm);
+    e.bauVisto = bauEm;
+  }
+  const corte = t - JANELA_MEDIA_MS;
+  e.altas = e.altas.filter((a) => a.em > corte);
+  e.baus = e.baus.filter((x) => x > corte);
+  const decorrido = e.inicio ? t - e.inicio : 0;
+  const medindo = decorrido < MEDIR_MIN_MS;
+  const ganho = e.altas.reduce((soma, a) => soma + a.delta, 0);
+  const ganhoHora = medindo || e.base === null ? null : Math.round((ganho * 3600000) / Math.min(decorrido, JANELA_MEDIA_MS));
+  return { estado: e, ganhoHora, baus: e.baus.length, aproximado: e.aproximado === true, medindo };
+}
+
 module.exports = {
+  STREAMS_POR_BAIA,
+  MOTIVOS_DO_CANAL,
+  escolherCanais,
+  uniaoFalhas,
+  escolherResgateCanais,
+  medirGanho,
   TIPOS,
   PRAZO_CONFIRMACAO_MS,
   ESPERA_FALHA_MS,

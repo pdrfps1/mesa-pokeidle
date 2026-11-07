@@ -166,3 +166,86 @@ describe('bloqueio de subframe pela janela (O-1)', () => {
     assert.deepEqual(chamadas, ['https://evil.com']);
   });
 });
+
+describe('multi-live: janela por vaga (windows)', () => {
+  function fakeBrowserWindow() {
+    const criadas = [];
+    class FakeWin {
+      constructor(opts) {
+        this.opts = opts;
+        this.calls = [];
+        this.destroyed = false;
+        this.webContents = {
+          id: criadas.length + 100,
+          on() {},
+          once() {},
+          setWindowOpenHandler() {},
+          setAudioMuted() {},
+          setBackgroundThrottling() {},
+          getURL: () => '',
+          isDestroyed: () => false,
+          reload() {},
+          send() {},
+        };
+        criadas.push(this);
+      }
+      on() {}
+      loadURL() { return Promise.resolve(); }
+      isDestroyed() { return this.destroyed; }
+      hide() { this.calls.push('hide'); }
+      show() { this.calls.push('show'); }
+      focus() {}
+      center() {}
+      setBounds() {}
+      setFocusable() {}
+      setSkipTaskbar() {}
+      showInactive() { this.calls.push('showInactive'); }
+      destroy() { this.destroyed = true; }
+    }
+    return { FakeWin, criadas };
+  }
+
+  function montarJanelas() {
+    const { FakeWin, criadas } = fakeBrowserWindow();
+    const catalogFake = { twitchPartitions: ['persist:mesa-twitch-1', 'persist:mesa-twitch-2', 'persist:mesa-twitch-3', 'persist:mesa-twitch-4'] };
+    const janelas = createTwitchWindows({
+      BrowserWindow: FakeWin,
+      session: { fromPartition: () => ({ clearStorageData: () => Promise.resolve(), clearCache: () => Promise.resolve() }) },
+      catalog: catalogFake,
+      preloadPath: '/x/preload.js',
+      prepareSession: () => {},
+      shell: {},
+      openOutside: () => {},
+      querManter: () => false,
+      aoEsconder: () => {},
+      aoFechar: () => {},
+      aoErroPagina: () => {},
+    });
+    return { janelas, criadas };
+  }
+
+  it('a vaga k = 5 usa a partição da baía 2 e o título mostra baía e live', () => {
+    const { janelas, criadas } = montarJanelas();
+    janelas.abrir(5, 'https://www.twitch.tv/canala', { modo: 'oculta', visivel: false });
+    assert.equal(criadas[0].opts.webPreferences.partition, 'persist:mesa-twitch-2');
+    assert.equal(criadas[0].opts.title, 'Twitch · Baía 2 · Live 2');
+    assert.equal(janelas.existe(5), true);
+    assert.equal(janelas.existe(1), false);
+  });
+
+  it('streamOf devolve a vaga que enviou a mensagem, ou -1 para um desconhecido', () => {
+    const { janelas, criadas } = montarJanelas();
+    janelas.abrir(0, 'https://www.twitch.tv/a', { modo: 'oculta', visivel: false });
+    janelas.abrir(12, 'https://www.twitch.tv/b', { modo: 'oculta', visivel: false });
+    assert.equal(janelas.streamOf(criadas[1].webContents), 12);
+    assert.equal(janelas.streamOf(criadas[0].webContents), 0);
+    assert.equal(janelas.streamOf({ id: 999, isDestroyed: () => false }), -1);
+    assert.equal(janelas.streamOf(null), -1);
+  });
+
+  it('título da vaga 4 é Baía 1 · Live 2', () => {
+    const { janelas, criadas } = montarJanelas();
+    janelas.abrir(4, 'https://www.twitch.tv/b', { modo: 'oculta', visivel: false });
+    assert.equal(criadas[0].opts.title, 'Twitch · Baía 1 · Live 2');
+  });
+});

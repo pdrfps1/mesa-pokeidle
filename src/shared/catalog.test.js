@@ -23,6 +23,30 @@ describe('mesaLiveKind', () => {
 });
 
 describe('normalize', () => {
+  it('sem standby salvo, traz o layout padrão da Espera', () => {
+    const cfg = catalog.normalize({});
+    assert.deepEqual(cfg.standby, require('./standby-layout').reset());
+  });
+
+  it('preserva um standby válido', () => {
+    const saved = {
+      standby: {
+        order: ['procs', 'bay-3', 'captures', 'bay-0', 'bay-1', 'bay-2'],
+        widgets: { procs: { span: 1, hidden: true, collapsed: false }, 'bay-3': { span: 2, hidden: false, collapsed: true } },
+      },
+    };
+    const cfg = catalog.normalize(saved);
+    // Os seis ids salvos seguem na frente; os widgets da Twitch entram no fim, ocultos.
+    assert.deepEqual(cfg.standby.order.slice(0, saved.standby.order.length), saved.standby.order);
+    assert.deepEqual(cfg.standby.order.slice(saved.standby.order.length), ['twitch', 'twitch-bay-0', 'twitch-bay-1', 'twitch-bay-2', 'twitch-bay-3', 'pokecalc']);
+    assert.equal(cfg.standby.widgets.twitch.hidden, true);
+    assert.equal(cfg.standby.widgets.procs.span, 1);
+    assert.equal(cfg.standby.widgets.procs.hidden, true);
+    assert.equal(cfg.standby.widgets['bay-3'].span, 2);
+    assert.equal(cfg.standby.widgets['bay-3'].collapsed, true);
+    assert.deepEqual(catalog.normalize(cfg).standby, cfg.standby);
+  });
+
   it('config antiga deixa ultra desligado nas quatro baías', () => {
     const cfg = catalog.normalize({});
     assert.equal(cfg.bays.length, 4);
@@ -184,5 +208,66 @@ describe('bônus Twitch no catálogo', () => {
   it('partições da Twitch são quatro e não se cruzam com as do jogo', () => {
     assert.equal(catalog.twitchPartitions.length, 4);
     for (const part of catalog.twitchPartitions) assert.equal(catalog.partitions.includes(part), false);
+  });
+});
+
+describe('multi-live: lives por baía no catálogo (normalize)', () => {
+  it('config antiga, sem o campo, vira 4 lives e nenhum canal', () => {
+    const bay = catalog.normalize({ bays: [{}] }).bays[0];
+    assert.equal(bay.twitchStreams, 4);
+    assert.deepEqual(bay.twitchCanais, []);
+  });
+
+  it('twitchStreams fora da faixa (0, 5, texto, nulo) vira 4; 1 a 4 passa', () => {
+    const lista = [0, 5, 'abc', null, 2.5].map((v) => catalog.normalize({ bays: [{ twitchStreams: v }] }).bays[0].twitchStreams);
+    assert.deepEqual(lista, [4, 4, 4, 4, 4]);
+    assert.equal(catalog.normalize({ bays: [{ twitchStreams: 1 }] }).bays[0].twitchStreams, 1);
+    assert.equal(catalog.normalize({ bays: [{ twitchStreams: 3 }] }).bays[0].twitchStreams, 3);
+  });
+
+  it('twitchCanais: login inválido sai, repetido sai, maiúsculas viram minúsculas, até 4', () => {
+    const canais = catalog.normalize({ bays: [{ twitchCanais: ['CanalA', 'canala', ' canalB ', 'bad login', '../x', 42, 'c1', 'd1', 'e1'] }] }).bays[0].twitchCanais;
+    assert.deepEqual(canais, ['canala', 'canalb', 'c1', 'd1']);
+  });
+
+  it('twitchCanais que não é lista vira vazio', () => {
+    assert.deepEqual(catalog.normalize({ bays: [{ twitchCanais: 'canala' }] }).bays[0].twitchCanais, []);
+  });
+});
+
+describe('foco por live: twitchFoco no catálogo (normalize)', () => {
+  const foco = (raw) => catalog.normalize({ bays: [{ twitchFoco: raw }] }).bays[0].twitchFoco;
+
+  it('login inválido sai e valor fora de xp, captura e shiny sai; login válido fica', () => {
+    assert.deepEqual(foco({ 'bad login': 'xp', '../x': 'xp', canal_1: 'xp', canalb: 'bogus', canalc: 'SHINY', cande: 42 }), { canal_1: 'xp' });
+    assert.deepEqual(foco({ a1: 'captura', b2: 'shiny' }), { a1: 'captura', b2: 'shiny' });
+  });
+
+  it('maiúsculas viram minúsculas e a mesma chave repetida conta uma vez (a primeira vence)', () => {
+    assert.deepEqual(foco({ CanalA: 'captura', canala: 'shiny' }), { canala: 'captura' });
+  });
+
+  it('__proto__ vira chave própria e não mexe no protótipo', () => {
+    const raw = JSON.parse('{"__proto__": "xp", "canala": "captura"}');
+    const out = foco(raw);
+    assert.equal(Object.getPrototypeOf(out), Object.prototype);
+    assert.equal(Object.getOwnPropertyDescriptor(out, '__proto__').value, 'xp');
+    assert.equal(out.canala, 'captura');
+  });
+
+  it('limite de 64 entradas válidas', () => {
+    const raw = {};
+    for (let n = 0; n < 70; n += 1) raw[`c${n}`] = 'xp';
+    const out = foco(raw);
+    assert.equal(Object.keys(out).length, 64);
+    assert.equal(out.c63, 'xp');
+    assert.equal(out.c64, undefined);
+  });
+
+  it('o que não é objeto (lista, texto, nulo, ausente) vira vazio', () => {
+    assert.deepEqual(foco(['canala']), {});
+    assert.deepEqual(foco('canala'), {});
+    assert.deepEqual(foco(null), {});
+    assert.deepEqual(foco(undefined), {});
   });
 });

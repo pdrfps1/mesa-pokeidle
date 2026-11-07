@@ -1,3 +1,6 @@
+// Na janela, standby-layout.js carrega antes deste arquivo (index.html). No main, é um require.
+const mesaStandbyLayoutRule = typeof MesaStandbyLayout !== 'undefined' ? MesaStandbyLayout : require('./standby-layout');
+
 var MESA_CATALOG = {
   gameUrl: 'https://pokeidle.io/app',
   bays: 4,
@@ -45,6 +48,45 @@ function mesaTwitchPrefs(raw) {
   return {
     tipos: { xp: t.xp !== false, captura: t.captura === true, shiny: t.shiny === true },
   };
+}
+
+// Vagas de live da baía (1 a 4). Sem valor válido, vale 4 (padrão).
+function mesaTwitchStreams(value) {
+  const amount = Number(value);
+  return Number.isInteger(amount) && amount >= 1 && amount <= 4 ? amount : 4;
+}
+
+// Canais oficiais escolhidos pelo usuário, em ordem: login válido, minúsculas, sem repetir, até 4.
+function mesaTwitchCanais(raw) {
+  if (!Array.isArray(raw)) return [];
+  const out = [];
+  for (const item of raw) {
+    if (typeof item !== 'string') continue;
+    const login = item.trim();
+    if (!/^[A-Za-z0-9_]{1,25}$/.test(login)) continue;
+    const lower = login.toLowerCase();
+    if (out.includes(lower)) continue;
+    out.push(lower);
+    if (out.length >= 4) break;
+  }
+  return out;
+}
+
+// Foco por live da baía: login (minúsculas) -> xp, captura ou shiny. Automático é a ausência da chave. Até 64 entradas.
+function mesaTwitchFoco(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const tipos = ['xp', 'captura', 'shiny'];
+  const entradas = new Map();
+  for (const login of Object.keys(raw)) {
+    if (entradas.size >= 64) break;
+    if (!/^[A-Za-z0-9_]{1,25}$/.test(login)) continue;
+    const valor = raw[login];
+    const chave = login.toLowerCase();
+    if (!tipos.includes(valor) || entradas.has(chave)) continue;
+    entradas.set(chave, valor);
+  }
+  // Object.fromEntries grava __proto__ como chave própria, sem mexer no protótipo.
+  return Object.fromEntries(entradas);
 }
 
 function mesaBoxSpan(value) {
@@ -207,6 +249,9 @@ MESA_CATALOG.normalize = function normalize(input) {
       scale: mesaScale(raw.scale),
       autoHunt: raw.autoHunt === true,
       twitchAuto: raw.twitchAuto === true,
+      twitchStreams: mesaTwitchStreams(raw.twitchStreams),
+      twitchCanais: mesaTwitchCanais(raw.twitchCanais),
+      twitchFoco: mesaTwitchFoco(raw.twitchFoco),
       open: raw.open !== false,
       placed: raw.placed !== false,
       box: mesaBayBox(raw.box),
@@ -225,6 +270,7 @@ MESA_CATALOG.normalize = function normalize(input) {
     bayWeights: mesaBayWeights(data.bayWeights),
     chrome: mesaChrome(data.chrome),
     twitch: mesaTwitchPrefs(data.twitch),
+    standby: mesaStandbyLayoutRule.normalize(data.standby),
   };
 };
 

@@ -4,8 +4,10 @@
 const fs = require('fs');
 const path = require('path');
 
+const P = require('./points');
+
 const LIMITE_PADRAO_BYTES = 512 * 1024;
-const CAMPOS = ['baia', 'tipo', 'motivo', 'fase', 'trava', 'clicou', 'pausado', 'detalhe'];
+const CAMPOS = ['baia', 'tipo', 'motivo', 'fase', 'trava', 'clicou', 'pausado', 'detalhe', 'canal', 'stream'];
 
 function caminhoPadrao(userDataDir) {
   return path.join(userDataDir, 'logs', 'twitch-resgate.log');
@@ -29,6 +31,15 @@ function montarLinha(entrada, agora) {
     if (k === 'pausado') continue;
     const v = origem[k];
     if (v === undefined || v === null || v === '') continue;
+    // Canal só entra como login validado; vaga só como inteiro de 0 a 3. Texto da página nunca passa.
+    if (k === 'canal') {
+      if (P.loginValido(v)) linha.canal = v.trim().toLowerCase();
+      continue;
+    }
+    if (k === 'stream') {
+      if (Number.isInteger(v) && v >= 0 && v <= 3) linha.stream = v;
+      continue;
+    }
     linha[k] = v;
   }
   const pausado = paraIsoSeFinito(origem.pausado);

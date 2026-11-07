@@ -18,6 +18,7 @@ var live = Array.from({ length: MESA_CATALOG.bays }, () => ({
   applied: {},
   potionAt: null,
   painted: false,
+  capturas: MesaCaptureTally.empty(),
 }));
 var webviews = [];
 var ui = {};
@@ -562,7 +563,14 @@ function ensureGame(index, delay) {
     webview.addEventListener('ipc-message', (event) => {
       if (webviews[index] !== webview) return;
       if (event.channel === 'state') onState(index, event.args[0]);
-      if (event.channel === 'hunt' && typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.ingest(index, event.args[0]);
+      if (event.channel === 'hunt') {
+        const payload = event.args[0];
+        if (typeof MesaCaptureTally !== 'undefined' && payload && payload.capturas) {
+          live[index].capturas = MesaCaptureTally.apply(live[index].capturas, payload.capturas, live[index].nick, Date.now());
+          if (typeof paintStandby === 'function') paintStandby();
+        }
+        if (typeof MesaAutoHunt !== 'undefined') MesaAutoHunt.ingest(index, payload);
+      }
     });
     webviews[index] = webview;
   }

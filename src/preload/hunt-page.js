@@ -87,6 +87,12 @@ function bump() {
   generation = Math.max(Date.now(), generation + 1);
 }
 
+function capturasOf() {
+  const capturas = { normal: state.capturas.normal, shiny: state.capturas.shiny };
+  if (state.melhorCaptura) capturas.melhor = Object.assign({}, state.melhorCaptura);
+  return capturas;
+}
+
 function build(includeHunts) {
   const summary = {
     generation,
@@ -115,6 +121,7 @@ function build(includeHunts) {
     waveClear: state.waveClear === true,
     semCena: semCenaOn(),
     safariDentro: state.safariDentro === true,
+    capturas: capturasOf(),
   };
   if (includeHunts) summary.hunts = state.hunts;
   return summary;
@@ -126,7 +133,7 @@ function fingerprint(summary) {
     summary.noCentro, summary.centroLivreEm, summary.serverOffsetMs, summary.vip, summary.xpBonus,
     summary.active, summary.catalogRev, summary.huntEventSeq, summary.huntEventSlug,
     summary.ondaSeq, summary.combateOndaSeq, summary.trocaHuntLivreEm, summary.waveClear,
-    summary.semCena, summary.safariDentro,
+    summary.semCena, summary.safariDentro, summary.capturas,
   ]);
 }
 

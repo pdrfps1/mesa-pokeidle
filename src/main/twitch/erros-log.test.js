@@ -124,3 +124,21 @@ describe('lerUltimosErros', () => {
     assert.deepEqual(lerUltimosErros(path.join(raiz, 'nada.log'), 5), []);
   });
 });
+
+describe('multi-live: canal e vaga no registro (erros-log)', () => {
+  const { montarLinha } = require('./erros-log');
+  const agora = () => Date.UTC(2026, 10, 6);
+
+  it('canal só entra como login validado, em minúsculas', () => {
+    assert.equal(montarLinha({ canal: 'CanalA', motivo: 'x' }, agora).canal, 'canala');
+    assert.equal(montarLinha({ canal: '<img src=x>', motivo: 'x' }, agora).canal, undefined);
+    assert.equal(montarLinha({ canal: 'Título da página com espaços', motivo: 'x' }, agora).canal, undefined);
+  });
+
+  it('vaga só entra como inteiro de 0 a 3', () => {
+    assert.equal(montarLinha({ stream: 2 }, agora).stream, 2);
+    assert.equal(montarLinha({ stream: 4 }, agora).stream, undefined);
+    assert.equal(montarLinha({ stream: '1' }, agora).stream, undefined);
+    assert.equal(montarLinha({ stream: -1 }, agora).stream, undefined);
+  });
+});

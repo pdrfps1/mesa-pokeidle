@@ -101,6 +101,32 @@ function installHuntBridge(ipc) {
     };
   }
 
+  // Valor inválido devolve null (campo omitido): nunca vira 0, senão corrompe a base do delta.
+  function cleanMelhor(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const nome = nameOf(raw.nome);
+    const level = intOf(raw.level, 1, 1000000);
+    if (!nome || level == null) return null;
+    return {
+      nome,
+      speciesId: intOf(raw.speciesId, 1, 1000000),
+      level,
+      shiny: raw.shiny === true,
+      ivSum: intOf(raw.ivSum, 0, 600),
+    };
+  }
+
+  function cleanCapturas(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const normal = intOf(raw.normal, 0, 1e9);
+    const shiny = intOf(raw.shiny, 0, 1e9);
+    if (normal == null || shiny == null) return null;
+    const clean = { normal, shiny };
+    const melhor = cleanMelhor(raw.melhor);
+    if (melhor) clean.melhor = melhor;
+    return clean;
+  }
+
   function cleanSummary(raw) {
     if (!raw || typeof raw !== 'object') return null;
     const offset = typeof raw.serverOffsetMs === 'number' && Number.isFinite(raw.serverOffsetMs) && Math.abs(raw.serverOffsetMs) <= 1e12
@@ -128,6 +154,8 @@ function installHuntBridge(ipc) {
       semCena: raw.semCena === true,
       safariDentro: raw.safariDentro === true,
     };
+    const capturas = cleanCapturas(raw.capturas);
+    if (capturas) summary.capturas = capturas;
     if (Array.isArray(raw.hunts)) summary.hunts = raw.hunts.slice(0, 800).map(cleanHunt).filter(Boolean);
     const sendSlug = raw.send && typeof raw.send === 'object' ? slugOf(raw.send.slug) : '';
     if (sendSlug) {

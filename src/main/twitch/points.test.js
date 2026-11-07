@@ -672,3 +672,197 @@ describe('limparResultado: via dedicado no aviso de clique (rodada redeem 1)', (
     assert.equal(r.posClique, null);
   });
 });
+
+describe('multi-live: escolherCanais', () => {
+  const ofi = (login, espectadores, aoVivo = true) => ({ login, nome: login, espectadores, aoVivo, ativo: true });
+  const lista = [ofi('canala', 50), ofi('canalb', 300), ofi('canalc', 120), ofi('canald', 10, false)];
+
+  it('n = 1 sem escolhidos equivale a escolherCanal (mantém o atual; senão o de mais espectadores)', () => {
+    assert.deepEqual(P.escolherCanais(lista, [], ['canala'], 1), ['canala']);
+    assert.deepEqual(P.escolherCanais(lista, [], [''], 1), ['canalb']);
+    assert.equal(P.escolherCanal(lista, ''), 'canalb');
+    assert.deepEqual(P.escolherCanais(lista, [], ['canald'], 1), ['canalb']);
+  });
+
+  it('escolhidos vêm antes, na ordem de marcação; vagas vazias são ""', () => {
+    assert.deepEqual(P.escolherCanais(lista, ['canalc', 'canala'], [], 3), ['canalc', 'canala', 'canalb']);
+    assert.deepEqual(P.escolherCanais(lista, ['canald'], [], 2), ['canalb', 'canalc']);
+    assert.deepEqual(P.escolherCanais([ofi('canala', 1)], ['canala'], [], 3), ['canala', '', '']);
+  });
+
+  it('sem repetir canal e canal já numa vaga fica nela', () => {
+    const r = P.escolherCanais(lista, ['canalb', 'canalb'], ['canala', 'canalb', ''], 2);
+    assert.deepEqual(r, ['canala', 'canalb']);
+    assert.equal(new Set(r.filter(Boolean)).size, r.filter(Boolean).length);
+  });
+
+  it('escolhido que volta desloca o automático de menor prioridade, de propósito; o canal que já está numa vaga fica nela', () => {
+    const sem = lista.map((o) => (o.login === 'canalb' ? { ...o, aoVivo: false } : o));
+    // canalc já está na vaga 1 e fica; a vaga 0 vai para o automático canala
+    const fora = P.escolherCanais(sem, ['canalb'], ['canalb', 'canalc'], 2);
+    assert.deepEqual(fora, ['canala', 'canalc']);
+    // canalb volta e ocupa a vaga livre; canala (já na vaga 0) fica onde está
+    const volta = P.escolherCanais(lista, ['canalb'], fora, 2);
+    assert.deepEqual(volta, ['canala', 'canalb']);
+  });
+});
+
+describe('multi-live: escolherResgateCanais', () => {
+  const base = (extra = {}) => ({
+    tipos: ['xp'],
+    leituraOk: true,
+    bonus: { xp: 0, captura: 0, shiny: 0 },
+    agoraServidor: 1000000,
+    recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }],
+    falhas: {},
+    agora: 1000000,
+    travados: [],
+    ...extra,
+  });
+  const st = (s, canal, saldoTexto, falhasCanal = {}) => ({ s, canal, saldo: saldoTexto ? P.parsePontos(saldoTexto) : null, falhasCanal });
+
+  it('saldos 100, 350, 610 e 900: vence o de 350 (menor saldo suficiente)', () => {
+    const r = P.escolherResgateCanais(base({ streams: [st(0, 'a', '100'), st(1, 'b', '350'), st(2, 'c', '610'), st(3, 'd', '900')] }));
+    assert.deepEqual(r, { tipo: 'xp', titulo: 'Bônus XP', custo: 300, s: 1, canal: 'b' });
+  });
+
+  it('empate de saldo fica com a menor vaga', () => {
+    const r = P.escolherResgateCanais(base({ streams: [st(2, 'c', '500'), st(0, 'a', '500')] }));
+    assert.equal(r.canal, 'a');
+    assert.equal(r.s, 0);
+  });
+
+  it('sem saldo suficiente em nenhuma live: espera saldo; sem saldo lido: sem-saldo-lido', () => {
+    assert.deepEqual(P.escolherResgateCanais(base({ streams: [st(0, 'a', '100')] })), { espera: 'saldo' });
+    assert.deepEqual(P.escolherResgateCanais(base({ streams: [st(0, 'a', null)] })), { espera: 'sem-saldo-lido' });
+  });
+
+  it('falha de canal pausa só aquela live: a outra segue', () => {
+    const falhasA = { xp: { n: 1, ate: 1000000 + 120000 } };
+    const r = P.escolherResgateCanais(base({ streams: [st(0, 'a', '900', falhasA), st(1, 'b', '400')] }));
+    assert.equal(r.canal, 'b');
+  });
+
+  it('todas as lives pausadas dão a espera pausado', () => {
+    const falhas = { xp: { n: 1, ate: 1000000 + 120000 } };
+    assert.deepEqual(P.escolherResgateCanais(base({ streams: [st(0, 'a', '900', falhas)] })), { espera: 'pausado' });
+  });
+});
+
+describe('multi-live: medirGanho', () => {
+  const T0 = 1000000000;
+  const min = (n) => n * 60000;
+  const saldo = (minimo, exato = true) => ({ valor: minimo, minimo, exato });
+
+  it('taxa por hora pela soma das altas; medindo e null antes de 15 min', () => {
+    let e = null;
+    let m = P.medirGanho(e, { saldo: saldo(100), bauEm: 0 }, T0);
+    assert.equal(m.medindo, true);
+    assert.equal(m.ganhoHora, null);
+    e = m.estado;
+    m = P.medirGanho(e, { saldo: saldo(150), bauEm: 0 }, T0 + min(20));
+    assert.equal(m.medindo, false);
+    // 50 pontos em 20 min: 150 por hora
+    assert.equal(m.ganhoHora, 150);
+  });
+
+  it('queda ignorada: a base refaz e a queda não entra como ganho', () => {
+    let m = P.medirGanho(null, { saldo: saldo(500), bauEm: 0 }, T0);
+    m = P.medirGanho(m.estado, { saldo: saldo(300), bauEm: 0 }, T0 + min(20));
+    m = P.medirGanho(m.estado, { saldo: saldo(350), bauEm: 0 }, T0 + min(40));
+    assert.equal(m.ganhoHora, Math.round((50 * 3600000) / (min(40))));
+  });
+
+  it('leitura abreviada marca aproximado; janela móvel de 60 min descarta altas antigas', () => {
+    let m = P.medirGanho(null, { saldo: saldo(1000, false), bauEm: 0 }, T0);
+    m = P.medirGanho(m.estado, { saldo: saldo(1100, false), bauEm: 0 }, T0 + min(20));
+    assert.equal(m.aproximado, true);
+    m = P.medirGanho(m.estado, { saldo: saldo(1100, false), bauEm: 0 }, T0 + min(90));
+    assert.equal(m.estado.altas.length, 0);
+  });
+
+  it('conta baús na janela e não conta o mesmo baú duas vezes', () => {
+    let m = P.medirGanho(null, { saldo: saldo(10), bauEm: 0 }, T0);
+    m = P.medirGanho(m.estado, { saldo: saldo(10), bauEm: T0 + min(1) }, T0 + min(1));
+    m = P.medirGanho(m.estado, { saldo: saldo(10), bauEm: T0 + min(1) }, T0 + min(2));
+    assert.equal(m.baus, 1);
+  });
+});
+
+describe('multi-live: medirGanho com troca de precisão', () => {
+  it('leitura abreviada antes da exata não cria alta fantasma nem zera a taxa', () => {
+    const T0 = 1000000000;
+    let m = P.medirGanho(null, { saldo: { valor: 1000, minimo: 1000, exato: false }, bauEm: 0 }, T0);
+    m = P.medirGanho(m.estado, { saldo: { valor: 1200, minimo: 1200, exato: true }, bauEm: 0 }, T0 + 20 * 60000);
+    assert.equal(m.estado.altas.length, 0);
+    assert.equal(m.ganhoHora, 0);
+  });
+});
+
+describe('multi-live: abreviada só é piso (oscilação entre formas)', () => {
+  it('exato 1234, abreviado 1250, exato 1260 conta 26 e não zera a taxa', () => {
+    const T0 = 1000000000;
+    let m = P.medirGanho(null, { saldo: { valor: 1234, minimo: 1234, exato: true }, bauEm: 0 }, T0);
+    m = P.medirGanho(m.estado, { saldo: { valor: 1250, minimo: 1000, exato: false }, bauEm: 0 }, T0 + 10 * 60000);
+    m = P.medirGanho(m.estado, { saldo: { valor: 1260, minimo: 1260, exato: true }, bauEm: 0 }, T0 + 20 * 60000);
+    const soma = m.estado.altas.reduce((s, a) => s + a.delta, 0);
+    assert.equal(soma, 26);
+    assert.equal(m.ganhoHora, Math.round((26 * 3600000) / (20 * 60000)));
+  });
+});
+
+describe('foco por live: escolherResgateCanais', () => {
+  const base = (extra = {}) => ({
+    tipos: ['xp', 'captura'],
+    leituraOk: true,
+    bonus: { xp: 0, captura: 0, shiny: 0 },
+    agoraServidor: 1000000,
+    recompensas: [{ tipo: 'xp', titulo: 'Bônus XP', custo: 300 }, { tipo: 'captura', titulo: 'Captura', custo: 500 }],
+    falhas: {},
+    agora: 1000000,
+    travados: [],
+    ...extra,
+  });
+  const st = (s, canal, saldoTexto, foco) => ({ s, canal, saldo: saldoTexto ? P.parsePontos(saldoTexto) : null, falhasCanal: {}, foco });
+
+  it('live focada em XP com saldo para Captura não resgata Captura (XP em dia): espera em-dia', () => {
+    // XP com bônus ainda ativo: só Captura precisa de resgate. Focada em XP não pode pagar Captura.
+    const r = P.escolherResgateCanais(base({
+      bonus: { xp: 4600000, captura: 0, shiny: 0 },
+      streams: [st(0, 'a', '900', 'xp')],
+    }));
+    assert.deepEqual(r, { espera: 'em-dia' });
+  });
+
+  it('focada e Automático no mesmo tipo com saldo: vence a focada, mesmo com saldo menor no Automático', () => {
+    const r = P.escolherResgateCanais(base({ tipos: ['xp'], streams: [st(0, 'a', '350'), st(1, 'b', '900', 'xp')] }));
+    assert.deepEqual(r, { tipo: 'xp', titulo: 'Bônus XP', custo: 300, s: 1, canal: 'b' });
+  });
+
+  it('foco em tipo desligado não resgata e não cai para outro tipo: espera foco-desligado', () => {
+    assert.deepEqual(P.escolherResgateCanais(base({ tipos: ['xp'], streams: [st(0, 'a', '900', 'shiny')] })), { espera: 'foco-desligado' });
+  });
+
+  it('foco em tipo desligado não bloqueia a live Automático, que segue e pode resgatar', () => {
+    const r = P.escolherResgateCanais(base({ tipos: ['xp'], streams: [st(0, 'a', '900', 'shiny'), st(1, 'b', '900')] }));
+    assert.deepEqual(r, { tipo: 'xp', titulo: 'Bônus XP', custo: 300, s: 1, canal: 'b' });
+  });
+
+  it('foco-desligado fica atrás de saldo: com uma live sem saldo suficiente, a espera é saldo', () => {
+    const r = P.escolherResgateCanais(base({ tipos: ['xp'], streams: [st(0, 'a', '900', 'shiny'), st(1, 'b', '100')] }));
+    assert.deepEqual(r, { espera: 'saldo' });
+  });
+
+  it('sem foco, resultado igual ao antigo (foco ausente, vazio ou fora de TIPOS)', () => {
+    const streams = (f) => [st(0, 'a', '100', f), st(1, 'b', '350', f), st(2, 'c', '610', f), st(3, 'd', '900', f)];
+    const sem = P.escolherResgateCanais(base({ streams: streams(undefined) }));
+    assert.deepEqual(sem, { tipo: 'xp', titulo: 'Bônus XP', custo: 300, s: 1, canal: 'b' });
+    assert.deepEqual(P.escolherResgateCanais(base({ streams: streams('')})), sem);
+    assert.deepEqual(P.escolherResgateCanais(base({ streams: streams('bogus') })), sem);
+  });
+
+  it('focada sem saldo e Automático com saldo: o Automático paga, inclusive o tipo que a outra focava', () => {
+    const r = P.escolherResgateCanais(base({ streams: [st(0, 'a', '100', 'xp'), st(1, 'b', '900')] }));
+    assert.deepEqual(r, { tipo: 'xp', titulo: 'Bônus XP', custo: 300, s: 1, canal: 'b' });
+  });
+});

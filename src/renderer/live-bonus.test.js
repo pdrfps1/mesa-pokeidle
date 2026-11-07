@@ -17,17 +17,44 @@ function criarEl(tag, cls, txt) {
     checked: false,
     type: '',
     title: '',
-    classList: { toggle() {}, remove() {} },
     attrs: {},
     children: [],
     setAttribute(nome, valor) { no.attrs[nome] = String(valor); },
+    removeAttribute(nome) { delete no.attrs[nome]; },
     append(...filhos) { no.children.push(...filhos); },
     replaceChildren(...filhos) { no.children = filhos; },
     addEventListener(tipo, fn) { (handlers[tipo] = handlers[tipo] || []).push(fn); },
     disparar(tipo) { (handlers[tipo] || []).forEach((fn) => fn({ type: tipo, target: no })); },
   };
+  no.classList = criarClassList(no);
   criados.push(no);
   return no;
+}
+
+// classList do mock: as classes ficam em className, então porClasse e comClasse enxergam cada troca de classe.
+function classesDe(no) {
+  return (no.className || '').split(' ').filter(Boolean);
+}
+
+function criarClassList(no) {
+  const adicionar = (c) => {
+    const lista = classesDe(no);
+    if (!lista.includes(c)) no.className = [...lista, c].join(' ');
+  };
+  const remover = (c) => {
+    no.className = classesDe(no).filter((x) => x !== c).join(' ');
+  };
+  return {
+    contains: (c) => classesDe(no).includes(c),
+    add: (...cs) => cs.forEach((c) => adicionar(c)),
+    remove: (...cs) => cs.forEach((c) => remover(c)),
+    toggle(c, forca) {
+      const ligar = forca === undefined ? !classesDe(no).includes(c) : !!forca;
+      if (ligar) adicionar(c);
+      else remover(c);
+      return ligar;
+    },
+  };
 }
 
 globalThis.el = criarEl;
@@ -195,7 +222,7 @@ describe('liveBonusDica', () => {
     assert.equal(dica.parado, true);
   });
 
-  it('aberto diz que é a janela que a Mesa abriu', () => {
+  it('aberto diz que é a janela que o app abriu', () => {
     const agora = Date.now();
     const dica = LB.liveBonusDica({ estado: 'aberto', motivo: '', em: agora }, agora, false);
     assert.equal(dica.texto.includes('nesta janela que abriu'), true);
@@ -205,14 +232,10 @@ describe('liveBonusDica', () => {
 describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
   beforeEach(prepararGlobais);
 
-  it('falha com vistos mostra o motivo e "Vi:" com os títulos, só em textContent', async () => {
-    const em = Date.now() - 1000;
-    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-recompensa', vistos: ['Hidratar 300', 'Bônus XP Plus 500'] };
-    montar(snap(quatro({ 0: { ultimo } })));
+  it('falha com vistos mostra só a frase curta; os vistos ficam fora da tela', async () => {
+    const pai = montar(snap(quatro({ 0: { ultimo: detalheCompleto('sem-recompensa') } })));
     await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('falhou'));
-    assert.ok(dd, 'linha do último resgate');
-    assert.match(dd.textContent, /não achei a recompensa\. Vi: Hidratar 300, Bônus XP Plus 500$/);
+    telaSemDiagnostico(pai, 'falhou às');
   });
 
   it('motivo sem-centro e recompensa-ambigua têm rótulo próprio', async () => {
@@ -228,198 +251,42 @@ describe('liveBonusUltimo no painel: motivos novos e Vi:', () => {
     assert.equal(ambigua.textContent.includes('Vi:'), false);
   });
 
-  it('sem-centro mostra fase, clicou e as pistas em "Vi no DOM", só em textContent', async () => {
-    const em = Date.now() - 1000;
-    const ultimo = {
-      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
-      fase: 'buscar', clicou: true, pistas: ['div#reward-a[dialog]', '<b>x</b>'],
-    };
-    montar(snap(quatro({ 0: { ultimo } })));
+  it('sem-centro com detalhe completo: só a frase curta na tela', async () => {
+    const pai = montar(snap(quatro({ 0: { ultimo: detalheCompleto('sem-centro') } })));
     await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
-    assert.ok(dd, 'linha do sem-centro');
-    assert.match(dd.textContent, /fase=buscar, clicou=sim\. Vi no DOM: div#reward-a\[dialog\], <b>x<\/b>$/);
-    assert.equal(dd.textContent.includes('Antes do clique'), false);
-    assert.equal(dd.textContent.includes('Cabeçalho'), false);
-    assert.equal(dd.children.length, 0);
+    telaSemDiagnostico(pai, 'falhou às');
   });
 
-  it('sem-centro mostra antes do clique, cabeçalho com cadeia, classes e antes por diálogo, só em textContent', async () => {
-    const em = Date.now() - 1000;
-    const ultimo = {
-      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
-      fase: 'abrir', clicou: true, pistas: ['div#ra[dialog]', 'div#rb[dialog]'],
-      pistasAntes: ['div#ra[dialog]', '<b>x</b>'],
-      cabecalho: {
-        achado: true,
-        cadeia: [
-          { no: 'section#hdr-#.a#', botoes: 2, titulo: false, resumo: true, dialogo: false },
-          { no: 'div', botoes: 0, titulo: true, resumo: false, dialogo: true },
-        ],
-      },
-      classes: ['rc:div.reward-center', '<b>y</b>'],
-      dialogoAntes: false,
-      dialogos: [
-        { botoes: 1, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [], antes: true },
-        { botoes: 0, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [], antes: false },
-      ],
-    };
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
-    assert.ok(dd, 'linha do sem-centro');
-    const fim = ', fase=abrir, clicou=sim. Vi no DOM: div#ra[dialog], div#rb[dialog]'
-      + '. Antes do clique: div#ra[dialog], <b>x</b>. Cabeçalho: sim'
-      + ' cadeia: section#hdr-#.a#(b=2,t=não,r=sim,d=não) > div(b=0,t=sim,r=não,d=sim)'
-      + '. Classes: rc:div.reward-center, <b>y</b>'
-      + '. Diálogo#1: antes=sim, título=não, botões=1, abas=0, itens: nenhum, dts: nenhum'
-      + ' / Diálogo#2: antes=não, título=não, botões=0, abas=0, itens: nenhum, dts: nenhum';
-    assert.ok(dd.textContent.endsWith(fim), dd.textContent);
-    assert.equal(dd.children.length, 0);
-  });
-
-  it('sem-centro mostra o trecho de diálogos depois de "Vi no DOM", só em textContent', async () => {
-    const em = Date.now() - 1000;
-    const ultimo = {
-      tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [],
-      fase: 'abrir', clicou: true, pistas: ['div[dialog]'], dialogoAntes: true,
-      dialogos: [{
-        botoes: 2,
-        abas: 1,
-        titulo: false,
-        campoTexto: false,
-        itens: [{ dts: 'close-btn', alvo: 'tab-#', aria: 'Fechar #', tab: true }],
-        dts: ['close-btn', '<b>x</b>'],
-      }],
-    };
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
-    assert.ok(dd, 'linha do sem-centro');
-    assert.match(dd.textContent, /fase=abrir, clicou=sim\. Vi no DOM: div\[dialog\]\. Diálogo#1: antes=sim, título=não, botões=2, abas=1, itens: close-btn\|tab-#\|Fechar #\|sim, dts: close-btn, <b>x<\/b>$/);
-    assert.equal(dd.textContent.includes('Antes do clique'), false);
-    assert.equal(dd.textContent.includes('Cabeçalho'), false);
-    assert.equal(dd.children.length, 0);
-  });
-
-  it('resultado antigo passa por limparResultado: antes do diálogo cai no dialogoAntes e sem cabeçalho nem pistasAntes não mostra as linhas', async () => {
+  it('resultado antigo do sem-centro (limparResultado) não mostra detalhe na tela', async () => {
     const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const bruto = {
-      id: 5, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true,
-      pistas: ['div[dialog]'], dialogoAntes: true,
-      dialogos: [{ botoes: 1, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [] }],
-    };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
+    const bruto = { id: 5, estado: 'falhou', motivo: 'sem-centro', fase: 'abrir', clicou: true, pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: true, dialogos: [{ botoes: 1, abas: 0, titulo: false, campoTexto: false, itens: [], dts: [] }] };
+    const ultimo = Object.assign({ tipo: 'xp', em: Date.now() - 1000 }, P.limparResultado(bruto));
+    const pai = montar(snap(quatro({ 0: { ultimo } })));
     await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
-    assert.ok(dd, 'linha do sem-centro');
-    assert.match(dd.textContent, /fase=abrir, clicou=sim\. Vi no DOM: div\[dialog\]\. Diálogo#1: antes=sim, título=não, botões=1, abas=0, itens: nenhum, dts: nenhum$/);
-    assert.equal(dd.textContent.includes('Cabeçalho'), false);
-    assert.equal(dd.textContent.includes('Antes do clique'), false);
+    telaSemDiagnostico(pai, 'falhou às');
   });
 
-  it('sem-botao com trava fora-do-centro vinda de limparResultado: mostra trava=fora-do-centro, só em textContent', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro', dialogos: [] };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
+  it('sem-botao com 24 botões no centro e total 999: nem a lista nem os números aparecem na tela', async () => {
+    // Fixture no teto que a Mesa entrega ao painel: até 24 botões (BOTOES_CENTRO_MAX_LIMPO) e total com teto 999 (CONTAGEM_MAX).
+    // O corte em si é testado em points.test.js; aqui a tela só não pode mostrar a lista nem o total.
+    const botoes = Array.from({ length: 24 }, (_, k) => ({ dts: `b${k}`, alvo: 'x', aria: 'y', tab: false, custo: k === 0, desab: false }));
+    const ultimo = Object.assign(detalheCompleto('sem-botao'), { botoesCentro: botoes, totalBotoesCentro: 999 });
+    const pai = montar(snap(quatro({ 0: { ultimo } })));
     await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /, trava=fora-do-centro Botões do centro: total=0; nenhum Card clicado: nenhum$/);
-    assert.equal(dd.innerHTML, undefined);
-  });
-
-  it('sem-botao lista os botões do centro só como texto, com <b> literal', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const botoesCentro = [{ dts: '<b>x</b>', alvo: '', aria: '', tab: false, custo: true, desab: false }];
-    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 3 };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /trava=sem-dedicado Botões do centro: total=3; <b>x<\/b>\|-\|-\|não\|sim\|não Card clicado: nenhum$/);
-    assert.equal(dd.innerHTML, undefined);
-  });
-
-  it('sem-botao mostra o card clicado como texto, com <b> literal', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const cardClicado = { dts: '<b>x</b>', alvo: '', aria: '', custo: true, desab: false };
-    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'fora-do-centro', dialogos: [], cardClicado };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /Card clicado: <b>x<\/b>\|-\|-\|sim\|não$/);
-    assert.equal(dd.innerHTML, undefined);
-  });
-
-  it('sem-botao: renderer mostra no máximo 24 botões e corta a linha em 1500 caracteres', async () => {
-    const em = Date.now() - 1000;
-    const botoesCentro = Array.from({ length: 30 }, (_, i) => ({ dts: 'item' + String.fromCharCode(65 + i), alvo: 'a'.repeat(40), aria: 'b'.repeat(40), tab: false, custo: false, desab: false }));
-    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 30, cardClicado: null };
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.ok(dd.textContent.includes('total=30'));
-    assert.ok(dd.textContent.includes('...'), 'linha cortada');
-    assert.ok(!dd.textContent.includes('itemY'), 'botão 25 não aparece');
-    assert.ok(dd.textContent.length < 1800, 'linha dentro do teto');
-    assert.ok(dd.textContent.endsWith('Card clicado: nenhum'));
-  });
-
-  it('sem-centro sem fase e sem clique, sem pistas: fase=-, clicou=não e nada depois', async () => {
-    const em = Date.now() - 1000;
-    montar(snap(quatro({ 0: { ultimo: { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-centro', vistos: [] } } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não abriu a lista de recompensas'));
-    assert.ok(dd, 'linha do sem-centro');
-    assert.match(dd.textContent, /fase=-, clicou=não$/);
-    assert.equal(dd.textContent.includes('Antes do clique'), false);
-    assert.equal(dd.textContent.includes('Cabeçalho'), false);
-    assert.equal(dd.textContent.includes('Vi no DOM'), false);
+    telaSemDiagnostico(pai, 'falhou às');
+    // O horário (HH:MM) sai antes da busca por números, para o relógio não fazer o teste oscilar.
+    const sobra = textos(pai).join(' ').replace(/\d{1,2}:\d{2}/g, '');
+    assert.equal(/\b(24|999)\b/.test(sobra), false, 'o corte de 24 e o teto de 999 não deveriam aparecer na tela');
   });
 });
 
-describe('diag no painel da baía', () => {
+describe('diag fora da tela (só log)', () => {
   beforeEach(prepararGlobais);
 
-  it('liveBonusDiag monta a linha só com contagens e sim/não', () => {
-    assert.equal(
-      LB.liveBonusDiag({ resumo: true, botaoPontos: true, botoesNoResumo: 3, saldoSeletor: 0, saldoTamanho: 12, saldoLido: false, centroSeletor: -1 }),
-      'Diag: resumo=sim, botão=sim, botões=3, saldo#=0, saldo=12 chars, lido=não, centro#=-1, resumo: nenhum',
-    );
-    assert.equal(LB.liveBonusDiag(null), '');
-  });
-
-  it('liveBonusDiag lista os botões do resumo como dts|alvo|aria, vazio vira -', () => {
-    const d = {
-      resumo: true, botaoPontos: true, botoesNoResumo: 2, saldoSeletor: 0, saldoTamanho: 3, saldoLido: true, centroSeletor: -1,
-      botoesResumo: [{ dts: 'pts-#', alvo: '', aria: 'Abrir ##' }, { dts: '', alvo: '', aria: '' }],
-    };
-    assert.equal(
-      LB.liveBonusDiag(d),
-      'Diag: resumo=sim, botão=sim, botões=2, saldo#=0, saldo=3 chars, lido=sim, centro#=-1, resumo: pts-#|-|Abrir ##; -|-|-',
-    );
-  });
-
-  it('o diag aparece no painel da baía com os valores, só em textContent', async () => {
-    const diag = { resumo: true, botaoPontos: true, botoesNoResumo: 3, saldoSeletor: 0, saldoTamanho: 12, saldoLido: false, centroSeletor: -1 };
-    montar(snap(quatro({ 0: { diag } })));
+  it('o diag não aparece na tela, mesmo com diag no snapshot', async () => {
+    const pai = montar(snap(quatro({ 0: { ultimo: detalheCompleto('sem-botao'), diag: { resumo: true, botaoPontos: true, botoesNoResumo: 1, saldoSeletor: 1, saldoTamanho: 12, saldoLido: true, centroSeletor: 2, botoesResumo: [{ dts: 'a', alvo: 'b', aria: 'c' }] } } })));
     await esperar();
-    const linha = criados.find((n) => n.tag === 'p' && n.textContent.startsWith('Diag:'));
-    assert.ok(linha, 'linha de diagnóstico da baía 1');
-    assert.equal(linha.textContent, 'Diag: resumo=sim, botão=sim, botões=3, saldo#=0, saldo=12 chars, lido=não, centro#=-1, resumo: nenhum');
-    assert.equal(linha.children.length, 0);
-    assert.equal(criados.filter((n) => n.tag === 'p' && n.textContent.startsWith('Diag:')).length, 1);
+    telaSemDiagnostico(pai, 'falhou às');
   });
 });
 
@@ -479,7 +346,7 @@ describe('mountLiveBonus', () => {
   });
 
   it('resposta de Já entrei sem .twitch mantém a frase da baía, preserva o Kick e liga com ok novo', async () => {
-    const fraseEsperada = 'Entre na Twitch nesta baía, pelo navegador ou na janela da Mesa.';
+    const fraseEsperada = 'Entre na Twitch nesta baía, pelo navegador ou na janela do app.';
     const bloco = {
       enviadoEm: Date.now(),
       custos: { xp: 300, captura: 500, shiny: 1000 },
@@ -495,7 +362,7 @@ describe('mountLiveBonus', () => {
     await esperar();
 
     assert.equal(status.textContent, fraseEsperada);
-    assert.notEqual(status.textContent, 'Aguardando a Mesa.');
+    assert.notEqual(status.textContent, 'Aguardando o app.');
     assert.equal(cfg.bays[0].twitchAuto, true);
     assert.equal(porClasse('toggle-sm')[0].checked, true);
     const kick = porClasse('live-bonus-kick')[0];
@@ -505,54 +372,6 @@ describe('mountLiveBonus', () => {
 
 describe('percurso e botões em branco no painel do resgate', () => {
   beforeEach(prepararGlobais);
-
-  it('sem-botao: botões sem atributo e sem custo viram sem atributo=N, os demais seguem listados', async () => {
-    const em = Date.now() - 1000;
-    const branco = { dts: '', alvo: '', aria: '', tab: false, custo: false, desab: false };
-    const botoesCentro = [branco, branco, { dts: 'RewardCard', alvo: '', aria: '', tab: false, custo: false, desab: false }];
-    const ultimo = { tipo: 'xp', em, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], botoesCentro, totalBotoesCentro: 3, cardClicado: null };
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /Botões do centro: total=3; RewardCard\|-\|-\|não\|não\|não; sem atributo=2 Card clicado: nenhum$/);
-  });
-
-  it('sem-botao com percurso: linha traz o percurso só como texto, com <b> literal', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const percurso = {
-      caminho: 'titulo',
-      clique: { tag: 'button', role: '', emBotao: true },
-      rejeitado: null,
-      lista: { cards: 2, comCusto: 1 },
-      pos: { centro: true, titulo: false, cardPresente: true, filtros: false, novos: 1 },
-      folhas: { total: 3, titulos: 1, custos: 1, resto: 1, saldo: false },
-      escopo: null,
-      candidatos: [{ dts: '<b>x</b>', alvo: '', aria: '', no: 'div', anc: [{ no: 'section', botoes: 1, titulo: false, resumo: false, dialogo: false }], novo: true, desab: false, trava: 'custo' }],
-      foraDoCentro: 0,
-    };
-    const bruto = { id: 6, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'sem-dedicado', dialogos: [], percurso };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    assert.ok(dd.textContent.includes('. Percurso: caminho=título; clique=button|-|sim; lista=2 cards, 1 com custo; pos: centro=sim, título=não, card=sim, filtros=não, novos=1; folhas=3 (título=1, custo=1, resto=1, saldo=não); candidatos: <b>x</b>|-|-|div|novo=sim|desab=não|trava=custo (section); fora do centro=0'), dd.textContent);
-    assert.equal(dd.innerHTML, undefined);
-  });
-
-  it('sem-recompensa com item recusado: a linha traz o percurso depois do motivo, sem percurso nenhum quando não há dado', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const percurso = { caminho: '', clique: null, rejeitado: { tag: 'button', role: '', emBotao: true, custo: false, visivel: false }, lista: { cards: 1, comCusto: 0 }, pos: null, folhas: null, escopo: null, candidatos: [], foraDoCentro: 0 };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado({ id: 7, estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [], percurso }));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei a recompensa'));
-    assert.ok(dd, 'linha do sem-recompensa');
-    assert.ok(dd.textContent.includes('não achei a recompensa. Percurso: caminho=-; clique=nenhum; recusado=button|-|botão=sim|custo=não|visível=não; lista=1 cards, 0 com custo; fora do centro=0'), dd.textContent);
-  });
 
   it('sem-recompensa sem percurso no resultado: a linha não traz a palavra Percurso', async () => {
     const em = Date.now() - 1000;
@@ -580,41 +399,12 @@ describe('bloqueio e sem atributo só para botão comum (rodada 1)', () => {
     await esperar();
     const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
     assert.ok(dd, 'linha do sem-botao');
-    assert.match(dd.textContent, /Botões do centro: total=3; -|-|-|sim|não|não; -|-|-|não|não|sim; sem atributo=1 Card clicado: nenhum$/);
-  });
-
-  it('percurso com bloqueio mostra o bloqueio como texto', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const percurso = { caminho: '', bloqueio: 'titulo-visivel', clique: null, rejeitado: null, lista: { cards: 1, comCusto: 1 }, pos: null, folhas: null, escopo: null, candidatos: [], foraDoCentro: 0 };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado({ id: 8, estado: 'falhou', motivo: 'sem-recompensa', vistos: [], dialogos: [], percurso }));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei a recompensa'));
-    assert.ok(dd, 'linha do sem-recompensa');
-    assert.ok(dd.textContent.includes('Percurso: caminho=-; bloqueio=titulo-visivel; clique=nenhum'), dd.textContent);
+    for (const termo of ['Botões do centro', 'sem atributo', 'Card clicado']) assert.equal(dd.textContent.includes(termo), false, termo);
   });
 });
 
 describe('Redeem por texto e frase sem-confirmacao no painel (rodada redeem)', () => {
   beforeEach(prepararGlobais);
-
-  it('o redeem sai como texto logo depois de caminho= e antes do clique, mesmo com percurso longo', async () => {
-    const P = require('../main/twitch/points.js');
-    const em = Date.now() - 1000;
-    const longo = Array.from({ length: 3 }, () => ({ dts: 'x'.repeat(40), alvo: 'y'.repeat(40), aria: 'z'.repeat(40), no: 'w'.repeat(40), anc: [{ no: 'q'.repeat(40), botoes: 1, titulo: false, resumo: false, dialogo: false }], novo: true, desab: false, trava: 'custo' }));
-    const percurso = { caminho: 'custo', clique: { tag: 'button', role: '', emBotao: true }, rejeitado: null, lista: { cards: 1, comCusto: 1 }, pos: null, folhas: null, escopo: null, candidatos: longo, foraDoCentro: 0,
-      redeem: { trava: 'redeem-texto', centro: true, detalhe: true, lista: false, unico: true, novo: true, visivel: true, texto: false, atributo: false, comCusto: 1, botao: {}, desc: {} } };
-    const bruto = { id: 9, estado: 'falhou', motivo: 'sem-botao', fase: 'confirmar', trava: 'redeem-texto', dialogos: [], percurso };
-    const ultimo = Object.assign({ tipo: 'xp', em }, P.limparResultado(bruto));
-    montar(snap(quatro({ 0: { ultimo } })));
-    await esperar();
-    const dd = criados.find((n) => n.tag === 'dd' && n.textContent.includes('não achei o botão de resgatar'));
-    assert.ok(dd, 'linha do sem-botao');
-    const t = dd.textContent;
-    assert.ok(t.includes('redeem=redeem-texto (centro=sim, detalhe=sim, lista=não'), t);
-    assert.ok(t.indexOf('redeem=') < t.indexOf('clique='), 'redeem antes de clique');
-  });
 
   it('clicado com via texto aparece como aguardando confirmação', async () => {
     const em = Date.now() - 1000;
@@ -628,7 +418,7 @@ describe('Redeem por texto e frase sem-confirmacao no painel (rodada redeem)', (
     montar(snap(quatro({ 0: { situacao: 'sem-confirmacao' } })));
     await esperar();
     assert.ok(criados.some((n) => n.textContent.includes('Cliquei no resgate e a Twitch não confirmou')));
-    assert.ok(criados.some((n) => n.textContent.includes('Reiniciar a Mesa também libera, mas pode gerar um novo resgate.')));
+    assert.ok(criados.some((n) => n.textContent.includes('Reiniciar o app também libera, mas pode gerar um novo resgate.')));
   });
 });
 
@@ -640,12 +430,646 @@ describe('painel do prazo: sem limiar e frase sem-leitura (rodada prazo)', () =>
     await esperar();
     assert.equal(criados.some((n) => n.textContent.includes('Resgatar quando faltar')), false);
     assert.equal(criados.some((n) => n.textContent === 'Resgatar quando faltar'), false);
-    assert.ok(criados.some((n) => n.textContent.includes('A Mesa resgata de novo quando a anterior acabar.')));
+    assert.ok(criados.some((n) => n.textContent.includes('O app resgata de novo quando a anterior acabar.')));
   });
 
   it('situação sem-leitura mostra a frase como texto', async () => {
     montar(snap(quatro({ 0: { situacao: 'sem-leitura' } })));
     await esperar();
     assert.ok(criados.some((n) => n.textContent.includes('O jogo ainda não mandou o prazo dos bônus. Resgate parado.')));
+  });
+});
+
+describe('multi-live: widget por baía (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  const oficiais5 = [
+    { login: 'c1', nome: 'Canal 1', espectadores: 500, aoVivo: true, ativo: true },
+    { login: 'c2', nome: 'Canal 2', espectadores: 400, aoVivo: true, ativo: true },
+    { login: 'c3', nome: 'Canal 3', espectadores: 300, aoVivo: true, ativo: true },
+    { login: 'c4', nome: 'Canal 4', espectadores: 200, aoVivo: true, ativo: true },
+    { login: 'c5', nome: 'Canal 5', espectadores: 100, aoVivo: true, ativo: true },
+  ];
+
+  it('limite de 4: com 4 marcados, os demais ficam desabilitados e a nota aparece', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'c2', 'c3', 'c4'], twitchStreams: 4 };
+    const pai = montar(snap(quatro({ 0: { oficiais: oficiais5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    await esperar();
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels.length, 5);
+    assert.equal(labels[0].children[0].disabled, false);
+    assert.equal(labels[4].children[0].disabled, true);
+    assert.equal(labels[4].children[0].checked, false);
+    assert.ok(textos(pai).some((t) => t.includes('Limite de 4 canais')));
+  });
+
+  it('marcar um canal grava twitchCanais na baía e salva', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1'], twitchStreams: 4 };
+    montar(snap(quatro({ 0: { oficiais: oficiais5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    await esperar();
+    const input = porClasse('live-bonus-canal')[4].children[0];
+    input.checked = true;
+    input.disparar('change');
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1', 'c5']);
+    assert.ok(estado.salvos >= 1);
+  });
+
+  it('clicar no 2 grava twitchStreams 2 e marca o botão', async () => {
+    cfg.bays[0] = { twitchStreams: 4 };
+    montar(snap(quatro({ 0: { oficiais: oficiais5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    await esperar();
+    const botao2 = criados.find((no) => no.tag === 'button' && no.textContent === '2' && no.attrs['aria-pressed'] !== undefined);
+    botao2.disparar('click');
+    assert.equal(cfg.bays[0].twitchStreams, 2);
+    assert.equal(botao2.attrs['aria-pressed'], 'true');
+  });
+
+  it('repintura reaproveita os nós (sem recriar a lista de canais)', async () => {
+    cfg.bays[0] = { twitchCanais: ['c2'], twitchStreams: 4 };
+    montar(snap(quatro({ 0: { oficiais: oficiais5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    await esperar();
+    const antes = porClasse('live-bonus-canal');
+    estado.liveStatus(snap(quatro({ 0: { oficiais: oficiais5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    const depois = porClasse('live-bonus-canal');
+    assert.equal(depois.length, antes.length);
+    assert.ok(depois.every((no, i) => no === antes[i]));
+  });
+
+  it('um único role="status" por widget (um por baía)', () => {
+    montar(snap(quatro()));
+    assert.equal(criados.filter((no) => no.attrs.role === 'status').length, 4);
+  });
+
+  it('texto hostil de canal e de situação vai como texto, nunca como elemento', async () => {
+    const hostil = '<img src=x onerror=alert(1)>';
+    montar(snap(quatro({ 0: { oficiais: [{ login: 'c1', nome: hostil, espectadores: 1, aoVivo: true, ativo: true }], loginTwitch: 'treinador', situacao: 'assistindo' } })));
+    await esperar();
+    assert.ok(porClasse('live-bonus-canal-texto').some((no) => no.textContent.includes(hostil)));
+    assert.equal(criados.filter((no) => no.tag === 'img').length, 0);
+  });
+});
+
+describe('rodada 3: escolha fantasma, limite e fora do ar (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  const of5 = [
+    { login: 'c1', nome: 'Canal 1', espectadores: 500, aoVivo: true, ativo: true },
+    { login: 'c2', nome: 'Canal 2', espectadores: 400, aoVivo: true, ativo: true },
+    { login: 'c3', nome: 'Canal 3', espectadores: 300, aoVivo: true, ativo: true },
+    { login: 'c4', nome: 'Canal 4', espectadores: 200, aoVivo: true, ativo: true },
+    { login: 'c5', nome: 'Canal 5', espectadores: 100, aoVivo: true, ativo: true },
+  ];
+  const montarBaia0 = () => montar(snap(quatro({ 0: { oficiais: of5, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+
+  it('login salvo que saiu das oficiais não conta, não aparece marcado e não trava o limite', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'fantasma', 'c2'], twitchStreams: 4 };
+    const pai = montarBaia0();
+    await esperar();
+    assert.ok(textos(pai).some((t) => t === 'Escolher canais (2 de 4 · 1 fora do ar)'));
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels.length, 5);
+    assert.equal(labels[2].children[0].checked, false);
+    assert.equal(labels[2].children[0].disabled, false);
+    assert.equal(labels[1].children[0].checked, true);
+    assert.ok(textos(pai).some((t) => t === '1 escolhida fora do ar'));
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1', 'fantasma', 'c2']);
+  });
+
+  it('o limite segue o número de lives da baía: com 2 lives, duas escolhas travam as demais', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'c2'], twitchStreams: 2 };
+    const pai = montarBaia0();
+    await esperar();
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels[2].children[0].disabled, true);
+    assert.ok(textos(pai).some((t) => t === 'Escolher canais (2 de 2)'));
+    assert.ok(textos(pai).some((t) => t.includes('Limite de 2 canais')));
+  });
+
+  it('marcar depois de um login fantasma é aceito enquanto há vaga efetiva; o fantasma continua salvo', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'fantasma'], twitchStreams: 2 };
+    montarBaia0();
+    await esperar();
+    const input = porClasse('live-bonus-canal')[1].children[0];
+    input.checked = true;
+    input.disparar('change');
+    assert.ok(cfg.bays[0].twitchCanais.includes('c2'));
+    assert.ok(cfg.bays[0].twitchCanais.includes('fantasma'));
+  });
+
+  it('Limpar fora do ar tira só os logins fora do ar', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'fantasma'], twitchStreams: 4 };
+    montarBaia0();
+    await esperar();
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1', 'fantasma']);
+    const botao = criados.find((no) => no.tag === 'button' && no.textContent === 'Limpar fora do ar');
+    botao.disparar('click');
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1']);
+  });
+});
+
+describe('rodada 4: fora do ar com a regra do backend, resumo e concordância (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  const base = [
+    { login: 'c1', nome: 'Canal 1', espectadores: 500, aoVivo: true, ativo: true },
+    { login: 'c2', nome: 'Canal 2', espectadores: 400, aoVivo: true, ativo: true },
+    { login: 'c3', nome: 'Canal 3', espectadores: 300, aoVivo: true, ativo: true },
+  ];
+  const montarOf = (oficiais) => montar(snap(quatro({ 0: { oficiais, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+
+  it('presente mas offline: segue escolhida (marcada) e também aparece como fora do ar', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'c2'], twitchStreams: 4 };
+    const off = base.map((o) => (o.login === 'c2' ? { ...o, aoVivo: false } : o));
+    const pai = montarOf(off);
+    await esperar();
+    assert.ok(textos(pai).some((t) => t === 'Escolher canais (1 de 4 · 1 fora do ar)'));
+    assert.ok(textos(pai).some((t) => t === '1 escolhida fora do ar'));
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels[1].children[0].checked, true);
+    assert.equal(labels[1].hidden, false);
+  });
+
+  it('ativo false conta como fora do ar, como no backend (aoVivo && ativo)', async () => {
+    cfg.bays[0] = { twitchCanais: ['c3'], twitchStreams: 4 };
+    const inativo = base.map((o) => (o.login === 'c3' ? { ...o, ativo: false } : o));
+    const pai = montarOf(inativo);
+    await esperar();
+    assert.ok(textos(pai).some((t) => t === 'Escolher canais (0 de 4 · 1 fora do ar)'));
+  });
+
+  it('duas fora do ar: concordância no plural e resumo com o total', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'fantasma', 'outro'], twitchStreams: 4 };
+    const pai = montarOf(base);
+    await esperar();
+    assert.ok(textos(pai).some((t) => t === '2 escolhidas fora do ar'));
+    assert.ok(textos(pai).some((t) => t === 'Escolher canais (1 de 4 · 2 fora do ar)'));
+  });
+
+  it('lista de oficiais vazia (jogo desconectado): não calcula fora do ar e não mostra Limpar fora do ar', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'fantasma'], twitchStreams: 4 };
+    const pai = montarOf([]);
+    await esperar();
+    assert.equal(textos(pai).some((t) => /escolhidas? fora do ar/.test(t)), false);
+    const botao = criados.find((no) => no.tag === 'button' && no.textContent === 'Limpar fora do ar');
+    assert.equal(botao.hidden, true);
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1', 'fantasma']);
+  });
+});
+
+describe('rodada 5: marcada offline não ocupa vaga (UI)', () => {
+  beforeEach(prepararGlobais);
+  const of = [
+    { login: 'c1', nome: 'Canal 1', espectadores: 500, aoVivo: true, ativo: true },
+    { login: 'c2', nome: 'Canal 2', espectadores: 400, aoVivo: false, ativo: true },
+    { login: 'c3', nome: 'Canal 3', espectadores: 300, aoVivo: true, ativo: true },
+  ];
+  const montarOf = (oficiais, streams) => montar(snap(quatro({ 0: { oficiais, loginTwitch: 'treinador', situacao: 'assistindo', streams } })));
+
+  it('marcada offline não conta no limite: com 2 lives e 1 elegível marcada, a outra ainda pode ser marcada', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'c2'], twitchStreams: 2 };
+    montarOf(of);
+    await esperar();
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels[2].children[0].disabled, false);
+    assert.equal(labels[1].children[0].checked, true);
+    assert.equal(labels[1].children[0].disabled, false);
+  });
+
+  it('a marcada offline pode ser desmarcada e sai do salvo', async () => {
+    cfg.bays[0] = { twitchCanais: ['c1', 'c2'], twitchStreams: 4 };
+    montarOf(of);
+    await esperar();
+    const input = porClasse('live-bonus-canal')[1].children[0];
+    input.checked = false;
+    input.disparar('change');
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1']);
+  });
+});
+
+describe('rodada 6: login com maiúscula e corte pelo limite (UI)', () => {
+  beforeEach(prepararGlobais);
+  const montarOf = (oficiais, cfgBay) => {
+    cfg.bays[0] = cfgBay;
+    return montar(snap(quatro({ 0: { oficiais, loginTwitch: 'treinador', situacao: 'assistindo' } })));
+  };
+
+  it('login oficial com maiúscula é o mesmo canal salvo em minúsculas: aparece marcado e conta', async () => {
+    const oficiais = [{ login: 'Canal1', nome: 'Canal 1', espectadores: 5, aoVivo: true, ativo: true }];
+    const pai = montarOf(oficiais, { twitchCanais: ['canal1'], twitchStreams: 4 });
+    await esperar();
+    assert.equal(porClasse('live-bonus-canal')[0].children[0].checked, true);
+    assert.ok(textos(pai).some((x) => x === 'Escolher canais (1 de 4)'));
+  });
+
+  it('reduzir de 4 para 2 lives com 3 salvos: mostra 2 de 2, o terceiro fica salvo e não vira fora do ar', async () => {
+    const oficiais = [
+      { login: 'c1', nome: 'Canal 1', espectadores: 5, aoVivo: true, ativo: true },
+      { login: 'c2', nome: 'Canal 2', espectadores: 4, aoVivo: true, ativo: true },
+      { login: 'c3', nome: 'Canal 3', espectadores: 3, aoVivo: true, ativo: true },
+    ];
+    const pai = montarOf(oficiais, { twitchCanais: ['c1', 'c2', 'c3'], twitchStreams: 2 });
+    await esperar();
+    assert.ok(textos(pai).some((x) => x === 'Escolher canais (2 de 2)'));
+    assert.equal(textos(pai).some((x) => /fora do ar/.test(x) && !/Limpar/.test(x)), false);
+    const labels = porClasse('live-bonus-canal');
+    assert.equal(labels[2].children[0].checked, false);
+    assert.equal(labels[2].children[0].disabled, true);
+    assert.deepEqual(cfg.bays[0].twitchCanais, ['c1', 'c2', 'c3']);
+  });
+});
+
+describe('foco por live: seletor, aviso do Shiny e repintura (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  const ofic = [
+    { login: 'c1', nome: 'Canal 1', espectadores: 500, aoVivo: true, ativo: true },
+    { login: 'c2', nome: 'Canal 2', espectadores: 400, aoVivo: true, ativo: true },
+  ];
+  const vagas = [
+    { k: 0, s: 0, canal: { login: 'c1', nome: 'Canal 1' }, escolhido: true, substitui: null, janela: 'fechada', modo: 'oculta', video: '', pontos: null, ganhoHora: null, baus: 0, aproximado: false, medindo: true, semGanho: false, pausadoAte: 0, situacao: 'assistindo' },
+    { k: 4, s: 1, canal: { login: 'c2', nome: 'Canal 2' }, escolhido: false, substitui: null, janela: 'fechada', modo: 'oculta', video: '', pontos: null, ganhoHora: null, baus: 0, aproximado: false, medindo: true, semGanho: false, pausadoAte: 0, situacao: 'juntando' },
+  ];
+  const bayCom = () => quatro({ 0: { oficiais: ofic, loginTwitch: 'treinador', situacao: 'assistindo', alvo: 2, streams: vagas } });
+  const selects = () => porClasse('live-bonus-foco-select');
+
+  it('cada linha tem Automático, XP, Captura e Shiny, com o valor salvo do canal', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'captura' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const s0 = selects()[0];
+    assert.deepEqual(s0.children.map((o) => o.value), ['', 'xp', 'captura', 'shiny']);
+    assert.deepEqual(s0.children.map((o) => o.textContent), ['Automático', 'XP (desligado)', 'Captura (desligado)', 'Shiny (desligado)']);
+    assert.equal(s0.value, 'captura');
+    assert.equal(s0.attrs['aria-label'], 'Foco da live de Canal 1');
+    assert.equal(s0.disabled, false);
+    assert.equal(selects()[1].value, '');
+  });
+
+  it('mudar o select grava twitchFoco e salva; Automático apaga a chave do canal', async () => {
+    cfg.bays[0] = { twitchFoco: { c2: 'xp' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const s0 = selects()[0];
+    s0.value = 'xp';
+    s0.disparar('change');
+    assert.deepEqual(cfg.bays[0].twitchFoco, { c2: 'xp', c1: 'xp' });
+    assert.ok(estado.salvos >= 1);
+    s0.value = '';
+    s0.disparar('change');
+    assert.deepEqual(cfg.bays[0].twitchFoco, { c2: 'xp' });
+    assert.equal(Object.hasOwn(cfg.bays[0].twitchFoco, 'c1'), false);
+  });
+
+  it('sem canal, o select fica desabilitado', async () => {
+    const semCanal = [Object.assign({}, vagas[0], { canal: null, escolhido: false })];
+    montar(snap(quatro({ 0: { oficiais: ofic, loginTwitch: 'treinador', situacao: 'juntando', alvo: 1, streams: semCanal } })));
+    await esperar();
+    assert.equal(selects()[0].disabled, true);
+  });
+
+  it('Shiny desligado com foco nele: aviso ligado por aria-describedby, e "Ligar Shiny" liga o tipo e repinta', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'shiny' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const s0 = selects()[0];
+    const aviso = porClasse('live-bonus-foco-aviso')[0];
+    const ligar = porClasse('live-bonus-foco-ligar')[0];
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.textContent, 'Shiny está desligado em Recompensas. Esta live só junta pontos.');
+    assert.equal(s0.attrs['aria-describedby'], aviso.id);
+    assert.equal(ligar.hidden, false);
+    assert.equal(ligar.textContent, 'Ligar Shiny');
+    ligar.disparar('click');
+    assert.equal(cfg.twitch.tipos.shiny, true);
+    assert.ok(estado.salvos >= 1);
+    assert.equal(aviso.hidden, true);
+    assert.equal(ligar.hidden, true);
+    assert.equal(s0.children[3].textContent, 'Shiny');
+  });
+
+  it('Captura desligada com foco nela: aviso próprio, "Ligar Captura" liga só Captura e repinta', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'captura' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const s0 = selects()[0];
+    const aviso = porClasse('live-bonus-foco-aviso')[0];
+    const ligar = porClasse('live-bonus-foco-ligar')[0];
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.textContent, 'Captura está desligado em Recompensas. Esta live só junta pontos.');
+    assert.equal(s0.attrs['aria-describedby'], aviso.id);
+    assert.equal(ligar.textContent, 'Ligar Captura');
+    ligar.disparar('click');
+    assert.deepEqual(cfg.twitch.tipos, { captura: true });
+    assert.ok(estado.salvos >= 1);
+    assert.equal(aviso.hidden, true);
+    assert.equal(ligar.hidden, true);
+    assert.equal(Object.hasOwn(s0.attrs, 'aria-describedby'), false);
+    assert.equal(s0.children[2].textContent, 'Captura');
+  });
+
+  it('XP desligado com foco nele: aviso próprio, "Ligar XP" liga só XP e repinta', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'xp' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const s0 = selects()[0];
+    const aviso = porClasse('live-bonus-foco-aviso')[0];
+    const ligar = porClasse('live-bonus-foco-ligar')[0];
+    assert.equal(aviso.hidden, false);
+    assert.equal(aviso.textContent, 'XP está desligado em Recompensas. Esta live só junta pontos.');
+    assert.equal(ligar.textContent, 'Ligar XP');
+    ligar.disparar('click');
+    assert.deepEqual(cfg.twitch.tipos, { xp: true });
+    assert.equal(aviso.hidden, true);
+    assert.equal(s0.children[1].textContent, 'XP');
+  });
+
+  it('repintura não recria o select nem troca o valor com foco nele; sem foco, atualiza', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'xp' }, twitchStreams: 4 };
+    montar(snap(bayCom()));
+    await esperar();
+    const antes = selects();
+    const s0 = antes[0];
+    globalThis.document = { activeElement: s0 };
+    try {
+      s0.value = 'captura';
+      estado.liveStatus(snap(bayCom()));
+      assert.equal(selects()[0], s0);
+      assert.equal(s0.value, 'captura');
+      globalThis.document.activeElement = null;
+      estado.liveStatus(snap(bayCom()));
+      assert.equal(s0.value, 'xp');
+      assert.equal(selects().length, antes.length);
+    } finally {
+      delete globalThis.document;
+    }
+  });
+
+  it('pré-visualização sem window.mesa monta o seletor sem erro', () => {
+    globalThis.window = { mesa: null };
+    const intervaloReal = globalThis.setInterval;
+    globalThis.setInterval = () => 0;
+    try {
+      LB.mountLiveBonus(criarEl('div'));
+    } finally {
+      globalThis.setInterval = intervaloReal;
+    }
+    assert.ok(selects().length > 0);
+    assert.equal(selects()[0].children.length, 4);
+  });
+});
+
+// Detalhe completo do último resgate (percurso, diálogos, botões, card, cabeçalho, classes, diag): o painel só pode mostrar a frase curta.
+function detalheCompleto(motivo) {
+  return {
+    tipo: 'xp', em: Date.now() - 1000, estado: 'falhou', motivo, trava: 'fora-do-centro', fase: 'confirmar', clicou: true,
+    vistos: ['Hidratar 300'], pistas: ['div[dialog]'], pistasAntes: ['div[dialog]'], dialogoAntes: true,
+    dialogos: [{ botoes: 1, abas: 0, titulo: true, itens: [{ dts: 'a', alvo: 'b', aria: 'c', tab: true }], dts: ['x'] }],
+    botoesCentro: [{ dts: 'btn', alvo: 'x', aria: 'y', tab: true, custo: true, desab: false }], totalBotoesCentro: 3,
+    cabecalho: { achado: true, cadeia: [{ no: 'div', botoes: 1, titulo: true, resumo: false, dialogo: false }] },
+    classes: ['rc:div.a'],
+    cardClicado: { dts: 'card', alvo: 'x', aria: 'y', custo: true, desab: false },
+    percurso: { caminho: 'custo', clique: { tag: 'button', role: 'button', emBotao: true }, bloqueio: 'fora-do-centro', foraDoCentro: 2 },
+  };
+}
+
+const TERMOS_FORA_DA_TELA = ['Percurso', 'Diálogo#', 'Botões do centro', 'Card clicado', 'Diag:', 'trava=', 'Vi:', 'Vi no DOM', 'Cabeçalho', 'Antes do clique', 'caminho=', 'clique=', 'redeem=', 'bloqueio=', 'recusado=', 'folhas=', 'candidatos:', 'fora do centro=', 'sem atributo=', 'botões=', 'cadeia', 'Classes', 'fase=', 'clicou='];
+
+// A tela mostra a frase curta do último resgate e nenhum termo do detalhe, qualquer que seja o detalhe no snapshot.
+function telaSemDiagnostico(pai, frase) {
+  const tela = textos(pai).join(' ');
+  assert.ok(tela.includes(frase), 'frase curta do último resgate');
+  for (const termo of TERMOS_FORA_DA_TELA) assert.equal(tela.includes(termo), false, `'${termo}' não deveria aparecer na tela`);
+}
+
+describe('outra-live na tela: Na fila e a frase de espera', () => {
+  beforeEach(prepararGlobais);
+
+  it('baía e vaga em outra-live mostram a frase de espera e Na fila, sem erro', async () => {
+    const vaga = { k: 0, s: 0, canal: { login: 'c1', nome: 'Canal 1' }, escolhido: true, substitui: null, janela: 'fechada', modo: 'oculta', video: '', pontos: null, ganhoHora: null, baus: 0, aproximado: false, medindo: true, semGanho: false, pausadoAte: 0, situacao: 'outra-live' };
+    const pai = montar(snap(quatro({ 0: { oficiais: [{ login: 'c1', nome: 'Canal 1', espectadores: 5, aoVivo: true, ativo: true }], loginTwitch: 'treinador', situacao: 'outra-live', alvo: 1, streams: [vaga] } })));
+    await esperar();
+    assert.ok(textos(pai).some((t) => t.includes('Outra live está resgatando. Este resgate vem depois.')));
+    assert.ok(textos(pai).some((t) => t === 'Na fila'));
+  });
+});
+
+// Controlador único: Configurações e Espera dividem a mesma inscrição, o mesmo liveGet e o mesmo setInterval.
+function comIntervaloFalso(fn) {
+  const intervaloReal = globalThis.setInterval;
+  globalThis.setInterval = () => 0;
+  try {
+    return fn();
+  } finally {
+    globalThis.setInterval = intervaloReal;
+  }
+}
+
+function descendentes(no) {
+  return [no, ...no.children.flatMap((filho) => descendentes(filho))];
+}
+
+function comClasse(no, classe) {
+  return descendentes(no).filter((n) => (n.className || '').split(' ').includes(classe));
+}
+
+// Monta as duas vistas com um só window.mesa. Devolve a página de Configurações e as partes da Espera.
+function montarDuas(snapInicial, sobrescrever) {
+  const mesa = Object.assign({
+    onLiveStatus(fn) { estado.liveStatus = fn; },
+    liveGet() { return Promise.resolve(snapInicial); },
+  }, sobrescrever || {});
+  globalThis.window = { mesa };
+  const pai = criarEl('div');
+  let parte = null;
+  comIntervaloFalso(() => {
+    LB.mountLiveBonus(pai);
+    parte = LB.mountLiveBonusStandby();
+  });
+  return { pai, parte };
+}
+
+describe('controlador único: Configurações e Espera na mesma inscrição (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  it('onLiveStatus, liveGet e o setInterval acontecem uma vez mesmo com duas vistas', async () => {
+    const contagem = { inscricoes: 0, leituras: 0, intervalos: 0 };
+    globalThis.window = {
+      mesa: {
+        onLiveStatus(fn) { contagem.inscricoes += 1; estado.liveStatus = fn; },
+        liveGet() { contagem.leituras += 1; return Promise.resolve(snap(quatro())); },
+      },
+    };
+    const intervaloReal = globalThis.setInterval;
+    globalThis.setInterval = () => { contagem.intervalos += 1; return 0; };
+    try {
+      LB.mountLiveBonus(criarEl('div'));
+      LB.mountLiveBonusStandby();
+    } finally {
+      globalThis.setInterval = intervaloReal;
+    }
+    await esperar();
+    assert.deepEqual(contagem, { inscricoes: 1, leituras: 1, intervalos: 1 });
+  });
+
+  it('ids são únicos entre as vistas e cada uma aponta o aria-describedby para o próprio aviso', async () => {
+    cfg.bays[0] = { twitchFoco: { c1: 'shiny' }, twitchStreams: 4 };
+    const oficiais = [{ login: 'c1', nome: 'Canal 1', espectadores: 5, aoVivo: true, ativo: true }];
+    const vaga = { k: 0, s: 0, canal: { login: 'c1', nome: 'Canal 1' }, escolhido: true, substitui: null, janela: 'fechada', modo: 'oculta', video: '', pontos: null, ganhoHora: null, baus: 0, aproximado: false, medindo: true, semGanho: false, pausadoAte: 0, situacao: 'assistindo' };
+    const { pai, parte } = montarDuas(snap(quatro({ 0: { oficiais, loginTwitch: 'treinador', situacao: 'assistindo', alvo: 1, streams: [vaga] } })));
+    await esperar();
+    const ids = criados.map((no) => no.id).filter(Boolean);
+    assert.ok(ids.length > 0);
+    assert.equal(new Set(ids).size, ids.length);
+    assert.ok(ids.includes('live-bonus-foco-aviso-0-0'));
+    assert.ok(ids.includes('live-bonus-espera-foco-aviso-0-0'));
+
+    const avisoAjustes = comClasse(pai, 'live-bonus-foco-aviso')[0];
+    assert.equal(avisoAjustes.id, 'live-bonus-foco-aviso-0-0');
+    assert.equal(comClasse(pai, 'live-bonus-foco-select')[0].attrs['aria-describedby'], 'live-bonus-foco-aviso-0-0');
+    const avisoEspera = comClasse(parte.bays[0], 'live-bonus-foco-aviso')[0];
+    assert.equal(avisoEspera.id, 'live-bonus-espera-foco-aviso-0-0');
+    assert.equal(comClasse(parte.bays[0], 'live-bonus-foco-select')[0].attrs['aria-describedby'], 'live-bonus-espera-foco-aviso-0-0');
+  });
+
+  it('mudança numa vista aparece na outra depois de paint', async () => {
+    const { pai, parte } = montarDuas(snap(quatro()));
+    await esperar();
+    const tiposAjustes = comClasse(pai, 'live-bonus-tipo').map((label) => label.children[0]);
+    const tiposEspera = comClasse(parte.geral, 'live-bonus-tipo').map((label) => label.children[0]);
+    assert.equal(tiposAjustes.length, 3);
+    assert.equal(tiposEspera.length, 3);
+    // Ligar XP na Espera: o próprio controlador repinta as duas vistas.
+    tiposEspera[0].checked = true;
+    tiposEspera[0].disparar('change');
+    assert.equal(cfg.twitch.tipos.xp, true);
+    assert.equal(tiposAjustes[0].checked, true);
+    // Mudança direta no estado: a outra vista só mostra depois de paintLiveBonus().
+    cfg.twitch.tipos.captura = true;
+    LB.paintLiveBonus();
+    assert.equal(tiposAjustes[1].checked, true);
+    assert.equal(tiposEspera[1].checked, true);
+  });
+
+  it('mountLiveBonusStandby sem window.mesa usa a prévia', () => {
+    globalThis.window = { mesa: null };
+    const parte = comIntervaloFalso(() => LB.mountLiveBonusStandby());
+    assert.equal(parte.bays.length, 4);
+    assert.ok(textos(parte.bays[0]).includes('Assistindo Canal X.'));
+    assert.ok(textos(parte.geral).includes('Recompensas'));
+  });
+
+  it('erro de ação na Espera vai para o erro da baía; nas Configurações segue no erro do topo', async () => {
+    const falha = { twitchNavegador() { return Promise.reject(new Error('falhou na baía')); } };
+    const { pai, parte } = montarDuas(snap(quatro()), falha);
+    await esperar();
+    const botaoEspera = descendentes(parte.bays[0]).find((n) => n.tag === 'button' && n.textContent === 'Entrar pelo navegador');
+    botaoEspera.disparar('click');
+    await esperar();
+    const erroBaia = comClasse(parte.bays[0], 'live-bonus-erro')[0];
+    assert.equal(erroBaia.hidden, false);
+    assert.equal(erroBaia.textContent, 'falhou na baía');
+    assert.equal(erroBaia.attrs['aria-live'], 'polite');
+    assert.equal(erroBaia.attrs.role, undefined);
+    assert.equal(comClasse(parte.bays[1], 'live-bonus-erro')[0].hidden, true);
+    assert.equal(comClasse(parte.geral, 'live-bonus-erro')[0].hidden, true);
+
+    const botaoAjustes = descendentes(pai).find((n) => n.tag === 'button' && n.textContent === 'Entrar pelo navegador');
+    botaoAjustes.disparar('click');
+    await esperar();
+    const erroTopo = comClasse(pai, 'live-bonus-erro')[0];
+    assert.equal(erroTopo.hidden, false);
+    assert.equal(erroTopo.textContent, 'falhou na baía');
+  });
+
+  it('erro de ação da baía some quando a ação seguinte dá certo (Espera)', async () => {
+    let tentativa = 0;
+    const falhaDepois = {
+      twitchNavegador() {
+        tentativa += 1;
+        return tentativa === 1 ? Promise.reject(new Error('falhou na baía')) : Promise.resolve(snap(quatro()));
+      },
+    };
+    const { parte } = montarDuas(snap(quatro()), falhaDepois);
+    await esperar();
+    const botao = descendentes(parte.bays[0]).find((n) => n.tag === 'button' && n.textContent === 'Entrar pelo navegador');
+    botao.disparar('click');
+    await esperar();
+    const erroBaia = comClasse(parte.bays[0], 'live-bonus-erro')[0];
+    assert.equal(erroBaia.hidden, false);
+    botao.disparar('click');
+    await esperar();
+    assert.equal(erroBaia.hidden, true);
+  });
+
+  it('falha da leitura inicial aparece no erro geral da Espera e some no próximo snapshot; Configurações segue sem mensagem', async () => {
+    const semLeitura = { liveGet() { return Promise.reject(new Error('sem leitura')); } };
+    const { pai, parte } = montarDuas(snap(quatro()), semLeitura);
+    await esperar();
+    const erroGeral = comClasse(parte.geral, 'live-bonus-erro')[0];
+    assert.equal(erroGeral.hidden, false);
+    assert.equal(erroGeral.textContent, 'sem leitura');
+    assert.equal(erroGeral.attrs['aria-live'], 'polite');
+    assert.equal(comClasse(pai, 'live-bonus-erro')[0].hidden, true);
+    estado.liveStatus(snap(quatro()));
+    assert.equal(erroGeral.hidden, true);
+  });
+
+  it('falha ao abrir a live da Kick aparece no erro geral da Espera e some no Abrir seguinte que der certo', async () => {
+    let tentativa = 0;
+    const kick = {
+      liveKickOpen() {
+        tentativa += 1;
+        return tentativa === 1 ? Promise.reject(new Error('kick fora')) : Promise.resolve(snap(quatro()));
+      },
+    };
+    const { pai, parte } = montarDuas(snap(quatro()), kick);
+    await esperar();
+    const botao = descendentes(parte.geral).find((n) => n.tag === 'button' && n.textContent === 'Abrir');
+    botao.disparar('click');
+    await esperar();
+    const erroGeral = comClasse(parte.geral, 'live-bonus-erro')[0];
+    assert.equal(erroGeral.hidden, false);
+    assert.equal(erroGeral.textContent, 'kick fora');
+    assert.equal(comClasse(pai, 'live-bonus-erro')[0].hidden, true);
+    botao.disparar('click');
+    await esperar();
+    assert.equal(erroGeral.hidden, true);
+  });
+});
+
+describe('classes e erros por baía no painel (UI)', () => {
+  beforeEach(prepararGlobais);
+
+  it('o botão de lives marcado recebe btn-active, e só ele, quando o número muda', async () => {
+    cfg.bays[0] = { twitchStreams: 2 };
+    montar(snap(quatro()));
+    await esperar();
+    const botoes = criados.filter((no) => no.tag === 'button' && no.attrs['aria-pressed'] !== undefined).slice(0, 4);
+    assert.deepEqual(botoes.map((b) => b.textContent), ['1', '2', '3', '4']);
+    assert.deepEqual(botoes.map((b) => b.classList.contains('btn-active')), [false, true, false, false]);
+    botoes[3].disparar('click');
+    assert.deepEqual(botoes.map((b) => b.classList.contains('btn-active')), [false, false, false, true]);
+    assert.equal(botoes[3].attrs['aria-pressed'], 'true');
+  });
+
+  it('is-parado marca a luz, o status e a célula de estado quando a situação para; a baía ativa não', async () => {
+    const oficiais = [{ login: 'c1', nome: 'Canal 1', espectadores: 5, aoVivo: true, ativo: true }];
+    const vaga = { k: 0, s: 0, canal: { login: 'c1', nome: 'Canal 1' }, escolhido: true, substitui: null, janela: 'fechada', modo: 'oculta', video: '', pontos: null, ganhoHora: null, baus: 0, aproximado: false, medindo: true, semGanho: false, pausadoAte: 0, situacao: 'sem-leitura' };
+    montar(snap(quatro({
+      0: { situacao: 'sem-confirmacao', loginTwitch: 'treinador', oficiais, alvo: 1, streams: [vaga] },
+      1: { situacao: 'assistindo', loginTwitch: 'treinador' },
+    })));
+    await esperar();
+    const luz = porClasse('live-bonus-lamp');
+    assert.equal(luz[0].textContent, '○ Parado');
+    assert.equal(luz[0].classList.contains('is-parado'), true);
+    assert.equal(luz[1].textContent, '● Ativo');
+    assert.equal(luz[1].classList.contains('is-parado'), false);
+    const status = porClasse('live-bonus-status');
+    assert.equal(status[0].classList.contains('is-parado'), true);
+    assert.equal(status[1].classList.contains('is-parado'), false);
+    const celulas = porClasse('live-bonus-estado');
+    assert.equal(celulas[0].textContent, 'Sem leitura');
+    assert.equal(celulas[0].classList.contains('is-parado'), true);
   });
 });

@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "mesa-board-layout.schema.json",
+  "title": "Mesa: layout de módulos do board (cfg.board)",
+  "description": "Descrição do estado de layout do board. Quem valida e normaliza é o motor puro src/shared/board-layout.js; este arquivo só documenta o formato. Grade de 12 colunas (x em 0..11, x + w <= 12), altura h em linhas de 10 px. Este arquivo descreve o formato, mas quem valida de verdade é o motor (validate em src/shared/board-layout.js): ele checa também x + w <= 12, sobreposição e baías obrigatórias, o que o JSON Schema não cobre. Ligação ao mesa-config.json ainda não feita.",
+  "type": "object",
+  "required": ["schemaVersion", "activeProfile", "profiles"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "const": 1,
+      "description": "Versão do formato. Só 1 existe por enquanto."
+    },
+    "activeProfile": {
+      "type": "string",
+      "pattern": "^[a-z0-9-]{1,32}$",
+      "description": "Id do perfil em uso. Precisa existir em profiles."
+    },
+    "profiles": {
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 8,
+      "propertyNames": { "pattern": "^[a-z0-9-]{1,32}$" },
+      "additionalProperties": { "$ref": "#/$defs/perfil" },
+      "description": "Perfis por id. No máximo 8."
+    }
+  },
+  "$defs": {
+    "perfil": {
+      "type": "object",
+      "required": ["name", "modules"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "pattern": "\\S", "maxLength": 40, "description": "Precisa ter pelo menos um caractere que não seja espaço (o motor faz trim)." },
+        "modules": {
+          "type": "array",
+          "maxItems": 32,
+          "items": { "$ref": "#/$defs/modulo" },
+          "description": "Módulos do perfil. No máximo 32. Os quatro ids bay-0..bay-3 precisam estar presentes (ocultos se não usados). Os visíveis não se sobrepõem."
+        }
+      }
+    },
+    "modulo": {
+      "type": "object",
+      "required": ["id", "type", "x", "y", "w", "h", "visible", "collapsed", "locked", "design"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(bay-[0-3]|captures|procs|twitch|pokecalc|twitch-bay-[0-3]|kpi-(0|[1-9]|1[0-9]|2[0-3]))$",
+          "description": "Id único no perfil. Cada tipo tem seu padrão: bay-0..3, captures, procs, twitch, twitch-bay-0..3, kpi-0..23."
+        },
+        "type": {
+          "type": "string",
+          "enum": ["bay", "captures", "procs", "twitch", "twitch-bay", "kpi", "pokecalc"],
+          "description": "Tipo do módulo. Tem de bater com o prefixo do id."
+        },
+        "x": { "type": "integer", "minimum": 0, "maximum": 11, "description": "Coluna inicial. Regra x + w <= 12: quem valida é o motor (validate), porque o JSON Schema não expressa relação entre campos." },
+        "y": { "type": "integer", "minimum": 0, "maximum": 10000, "description": "Linha inicial (linhas de 10 px)." },
+        "w": { "type": "integer", "minimum": 3, "maximum": 12, "description": "Largura em colunas. Limite exato no if/then por tipo." },
+        "h": { "type": "integer", "minimum": 6, "maximum": 80, "description": "Altura em linhas de 10 px (80 = 800 px). Limite exato no if/then por tipo." },
+        "visible": { "type": "boolean", "description": "Falso oculta o módulo sem tirar o id. Oculto não ocupa espaço na grade." },
+        "collapsed": { "type": "boolean" },
+        "locked": { "type": "boolean", "description": "Locked não se move nem muda de tamanho." },
+        "design": { "$ref": "#/$defs/design" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "bay" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "pattern": "^bay-[0-3]$" }, "w": { "minimum": 3, "maximum": 12 }, "h": { "minimum": 12, "maximum": 80 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "captures" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "const": "captures" }, "w": { "minimum": 4, "maximum": 12 }, "h": { "minimum": 12, "maximum": 80 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "procs" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "const": "procs" }, "w": { "minimum": 4, "maximum": 12 }, "h": { "minimum": 12, "maximum": 80 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "twitch" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "const": "twitch" }, "w": { "minimum": 4, "maximum": 12 }, "h": { "minimum": 12, "maximum": 80 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "pokecalc" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "const": "pokecalc" }, "w": { "minimum": 4, "maximum": 12 }, "h": { "minimum": 12, "maximum": 80 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "twitch-bay" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "pattern": "^twitch-bay-[0-3]$" }, "w": { "minimum": 3, "maximum": 12 }, "h": { "minimum": 8, "maximum": 60 } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "kpi" } }, "required": ["type"] },
+          "then": { "properties": { "id": { "pattern": "^kpi-(0|[1-9]|1[0-9]|2[0-3])$" }, "w": { "minimum": 3, "maximum": 12 }, "h": { "minimum": 6, "maximum": 40 } } }
+        }
+      ]
+    },
+    "design": {
+      "type": "object",
+      "required": ["accent", "glow"],
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "enum": ["ciano", "roxo", "magenta", "dourado", "lima", null],
+          "description": "Acento do módulo. Cada um tem papel fixo no tema Arena (proposta, ver docs/modulos.md)."
+        },
+        "glow": { "type": "boolean", "description": "Brilho do acento. Só em foco ou ativo, quando o tema for aplicado." }
+      }
+    }
+  }
+}

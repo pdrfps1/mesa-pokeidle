@@ -2415,7 +2415,7 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
 
   // Centro de cabeçalho (role=dialog) com lista e detalhe. Opções: custo, via ('titulo' ou 'custo'), itemTexto, redeemTexto,
   // redeemRects, redeemAttrs, redeemNaLista, aparecePoll, semFolha, desc, quintoTexto, quintoAria, filtro, itemRects,
-  // extraBotoes, foraDoHeader, dedicado, extraNumero, desab.
+  // extraBotoes, foraDoHeader, dedicado, extraNumero, desab, saldoNaLista.
   function cenario(o = {}) {
     const custo = o.custo || 300;
     const ordem = [];
@@ -2449,7 +2449,7 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
       const more = el({ tag: 'button', attrs: { 'aria-label': 'More options' } });
       const close = el({ tag: 'button', attrs: { 'aria-label': 'Close' } });
       const quinto = el({ tag: 'button', textContent: o.quintoTexto === undefined ? 'Claim Bonus' : o.quintoTexto, attrs: o.quintoAria ? { 'aria-label': o.quintoAria } : {}, rects: [{}] });
-      const botoes = [back, more, close, quinto, ...(o.semRedeem !== true && (o.redeemNaLista !== false || o.redeemNaLista === undefined) ? [redeem] : []), ...(o.extraBotoes || [])];
+      const botoes = [back, more, close, quinto, ...(o.semRedeem !== true && (o.redeemNaLista !== false || o.redeemNaLista === undefined) ? [redeem] : []), ...(o.extraBotoes || []), ...(o.saldoNaLista ? [saldoNode] : [])];
       if (o.filtro) botoes.push(el({ tag: 'button', textContent: 'Filtrar', attrs: { 'data-a-target': 'reward-filter-all' }, rects: [{}] }));
       const filhos = [header, ...folhas, ...botoes];
       if (o.dedicado) {
@@ -2472,9 +2472,14 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
       const base = o.via === 'custo' ? [card] : [item];
       if (o.cardNaLista) base.push(card);
       if (o.redeemNaLista) base.push(redeem);
+      if (o.saldoNaLista) base.push(saldoNode);
       return base;
     };
     const resumo = el({ tag: 'button', textContent: o.saldo === undefined ? '1.234' : o.saldo });
+    // Botão de saldo na própria lista do centro (com o centro aberto e no detalhe). Clique nele deixa rastro 'saldo'.
+    // saldoAria: aria-label do botão de saldo na lista (o log real mostra aria só no botão de saldo, não no card do custo).
+    const saldoNode = el({ tag: 'button', textContent: o.saldo === undefined ? '1.234' : o.saldo, rects: [{}], attrs: o.saldoAria ? { 'aria-label': o.saldoAria } : {} });
+    saldoNode.onClick = () => ordem.push('saldo');
     let aberto = false;
     resumo.onClick = () => {
       ordem.push('resumo');
@@ -2597,7 +2602,7 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
     assert.equal(c.redeem.clicks, 0);
   });
 
-  it('saldo igual ao custo (texto 300 sem aria): redeem-varios, 0 clique', async () => {
+  it('botão 300 que não é o saldo: redeem-varios, 0 clique', async () => {
     const c = cenario({ quintoTexto: '300' });
     const res = await D.resgatar(c.d, pedido(), depsDe(c));
     assert.equal(res.trava, 'redeem-varios');
@@ -2740,6 +2745,92 @@ describe('Redeem por texto (sem seletor dedicado, detalhe real)', () => {
     const c = cenario({ saldo: 'abc', quintoTexto: '610', quintoAria: 'You have 610 BengaPoints. Click to learn' });
     const res = await D.resgatar(c.d, pedido(), depsDe(c));
     assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('saldo abreviado 1.2K no botão do saldo: 1 clique, via texto', async () => {
+    const c = cenario({ saldo: '1.2K', quintoTexto: '1.2K' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.via, 'texto');
+    assert.equal(c.redeem.clicks, 1);
+  });
+
+  it('saldo 300 no botão do saldo, igual ao custo: 1 clique, sem redeem-varios', async () => {
+    const c = cenario({ saldo: '300', quintoTexto: '300' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.via, 'texto');
+    assert.equal(c.redeem.clicks, 1);
+  });
+
+  it('saldo 450 no botão do saldo, fora do custo: 1 clique, via texto', async () => {
+    const c = cenario({ saldo: '450', quintoTexto: '450' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.via, 'texto');
+    assert.equal(c.redeem.clicks, 1);
+  });
+
+  it('saldo 1.2K com botão 2.5K visível: redeem-lista, 0 clique', async () => {
+    const c = cenario({ saldo: '1.2K', extraBotoes: [el({ tag: 'button', textContent: '2.5K', rects: [{}] })] });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('saldo ilegível (abc) não exclui botão 1.2K: redeem-lista, 0 clique', async () => {
+    const c = cenario({ saldo: 'abc', quintoTexto: '1.2K' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('saldo 1K+ (não lido) não exclui botão 1K+: redeem-lista, 0 clique', async () => {
+    const c = cenario({ saldo: '1K+', quintoTexto: '1K+' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('resumo 1K com botão 2K: não é o saldo, redeem-lista, 0 clique', async () => {
+    const c = cenario({ saldo: '1K', quintoTexto: '2K' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.trava, 'redeem-lista');
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('saldo 300 com aria sozinho na lista (sem card 300): 0 clique no saldo, sem-recompensa', async () => {
+    const c = cenario({ saldo: '300', saldoNaLista: true, saldoAria: 'You have 300 BengaPoints. Click to learn', itemTexto: 'Outro 450', semRedeem: true });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.motivo, 'sem-recompensa');
+    assert.equal(c.ordem.includes('saldo'), false);
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('card real "300" sem aria e saldo 300 com aria na lista: clica o card, não o saldo, resgata pelo Redeem', async () => {
+    const c = cenario({ via: 'custo', saldo: '300', saldoNaLista: true, saldoAria: 'You have 300 BengaPoints. Click to learn' });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(c.ordem.includes('saldo'), false);
+    assert.equal(c.ordem.includes('card'), true);
+    assert.equal(res.via, 'texto');
+    assert.equal(c.redeem.clicks, 1);
+  });
+
+  it('card real 300 desabilitado sem aria e saldo 300 com aria na lista: indisponivel, sem clique no saldo', async () => {
+    const c = cenario({ via: 'custo', saldo: '300', saldoNaLista: true, saldoAria: 'You have 300 BengaPoints. Click to learn' });
+    c.card.disabled = true;
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    assert.equal(res.motivo, 'indisponivel');
+    assert.equal(c.ordem.includes('saldo'), false);
+    assert.equal(c.redeem.clicks, 0);
+  });
+
+  it('saldo 300 sem aria sozinho na lista (sem card 300): documenta o resultado atual, que clica o botão do saldo', async () => {
+    const c = cenario({ saldo: '300', saldoNaLista: true, itemTexto: 'Outro 450', semRedeem: true });
+    const res = await D.resgatar(c.d, pedido(), depsDe(c));
+    // Resultado atual, sem aria: a regra antiga (ordem do DOM) deixa o botão do saldo entrar como card. Clica nele,
+    // depois fecha o centro (resumo) e falha como sem-recompensa. Se isso mudar, o teste deve mudar junto.
+    assert.equal(c.ordem.includes('saldo'), true);
+    assert.equal(res.estado, 'falhou');
+    assert.equal(res.motivo, 'sem-recompensa');
     assert.equal(c.redeem.clicks, 0);
   });
 

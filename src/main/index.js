@@ -18,11 +18,13 @@ const { bundleGamePreload, loadPageSource, installHuntPageHook } = require('./hu
 const { registerHuntReference } = require('./hunt-reference');
 const { createPerfSampler } = require('./perf-sampler');
 const { registerUpdater } = require('./updater');
+const AppBrand = require('../shared/brand');
 
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 
-app.setName('Mesa');
-const mesaData = path.join(app.getPath('appData'), 'Mesa');
+app.setName(AppBrand.productName);
+if (process.platform === 'win32') app.setAppUserModelId(AppBrand.appId);
+const mesaData = path.join(app.getPath('appData'), AppBrand.dataDirName);
 fs.mkdirSync(mesaData, { recursive: true });
 app.setPath('userData', mesaData);
 const GAME_PRELOAD = bundleGamePreload(mesaData, path.join(__dirname, '../preload'));
@@ -52,7 +54,7 @@ let deskOpen = true;
 let windowHot = true;
 let deskFocus = null;
 const googleLoginInterceptAt = new Map();
-const GOOGLE_LOGIN_HINT = 'O login do Google não abre dentro da Mesa. Use «Entrar com Google», entre no jogo no navegador e feche-o — o login entra sozinho nesta baía. Se não entrar, use «Já entrei».';
+const GOOGLE_LOGIN_HINT = `O login do Google não abre dentro do ${AppBrand.productName}. Use «Entrar com Google», entre no jogo no navegador e feche-o — o login entra sozinho nesta baía. Se não entrar, use «Já entrei».`;
 const loginBrowserDeps = () => ({
   catalog,
   userData: () => app.getPath('userData'),
@@ -331,6 +333,7 @@ const perf = createPerfSampler({
   webContents,
   session,
   catalog,
+  twitchPartitions: catalog.twitchPartitions,
   scene: () => ({
     window: windowHot ? 'aberta' : 'minimizada',
     view: deskOpen ? 'mesa' : 'ajustes',
@@ -346,6 +349,7 @@ const perf = createPerfSampler({
 ipcMain.handle('metrics:get', (event) => (isUi(event) ? perf.ramByBay() : []));
 ipcMain.handle('perf:report', (event) => (isUi(event) ? perf.summarize() : null));
 ipcMain.handle('perf:reset', (event) => (isUi(event) ? perf.reset() : null));
+ipcMain.handle('metrics:processes', (event) => (isUi(event) ? perf.processes() : null));
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -354,7 +358,8 @@ function createWindow() {
     minWidth: 900,
     minHeight: 520,
     backgroundColor: '#161719',
-    title: 'Mesa',
+    title: AppBrand.productName,
+    icon: path.join(__dirname, '../assets/brand/icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: UI_PRELOAD,
@@ -504,7 +509,14 @@ if (gotLock) {
     prepareSession: (part) => prepareSession(part, false),
     prefs: () => {
       const c = readCfg() || catalog.normalize({});
-      return { tipos: c.twitch.tipos, limiarMin: c.twitch.limiarMin, auto: c.bays.map((b) => b.twitchAuto === true) };
+      return {
+        tipos: c.twitch.tipos,
+        limiarMin: c.twitch.limiarMin,
+        auto: c.bays.map((b) => b.twitchAuto === true),
+        streams: c.bays.map((b) => b.twitchStreams),
+        canais: c.bays.map((b) => b.twitchCanais),
+        foco: c.bays.map((b) => b.twitchFoco),
+      };
     },
   });
   registerLive({ ipcMain, session, catalog, isUi, app, shell, getUiWindow: () => uiWindow, twitch: twitchApi });

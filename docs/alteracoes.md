@@ -1,5 +1,685 @@
 # Alterações
 
+## 2026-11-07 — Patch «Módulos» · motor de layout e especificação
+
+> O board de módulos ganha o motor puro de layout (`src/shared/board-layout.js`), com testes, contrato JSON e especificação. Nenhuma tela mudou: o motor não está ligado à Mesa nem à Espera. O tema Arena segue como proposta, não aplicada, e o Vigília continua padrão.
+
+### Destaques do patch
+- **Motor puro:** mover, redimensionar, adicionar, remover, perfis, migração do layout antigo, snap, colisão e compactação, sem tela.
+- **Módulo travado:** não se move, não se redimensiona, não é removido nem ocultado, e sobrevive ao reset do perfil.
+- **Especificação:** `docs/modulos.md`, com matriz de componentes, regras de grade, breakpoints, proposta Arena, desempenho e o conflito com o MASTER «Vigília».
+
+### O que mudou
+- `src/shared/board-layout.js` (novo): grade de 12 colunas, linha de 10 px e gap de 8 px. Toda operação que muda o estado devolve cópia profunda; operação recusada devolve a mesma referência. Chave desconhecida é recusada por `validate` e descartada por `normalize`. Limites de 8 perfis e 32 módulos por perfil.
+- Tipos de módulo: baía, KPI, capturas, processos, Twitch (geral e por baía) e calculadora de status (`pokecalc`). Os limites dos tipos novos são provisórios.
+- Migração do layout antigo (`fromLegacy`) cobre os 12 widgets da Espera, incluindo `pokecalc`. Nada na Mesa a chama ainda.
+- `docs/board-layout.schema.json` e `docs/exemplos/board-layout.exemplo.json`: contrato do módulo e exemplo com dois perfis. O ajv foi usado só como checador; não é dependência.
+- `docs/modulos.md` (novo): especificação. Em §4, a regra de travado ganhou a remissão às exceções que já estavam escritas logo abaixo.
+- `package.json`: uma linha no script `test`.
+
+### Por quê
+Preparar o board de módulos com regras testadas antes de mexer em tela. Decisões do usuário nesta entrega: o reset de perfil preserva os módulos travados, em vez de reset total; o tema Arena fica como proposta opcional e o Vigília segue padrão, porque o MASTER proíbe neon, degradê e vidro; ligar o motor às telas fica para depois.
+
+### Arquivos de produto
+Lista feita pelos arquivos desta entrega. O diff de `dashboard/` mistura outras frentes ainda não commitadas (o `git status` mostra cerca de 73 entradas), e `package.json` tem diff de outros trabalhos além da linha de teste. Por isso a lista não se isola por `git diff`:
+- `dashboard/src/shared/board-layout.js` (novo) e `dashboard/src/shared/board-layout.test.js` (novo).
+- `dashboard/docs/modulos.md` (novo), `dashboard/docs/board-layout.schema.json` (novo) e `dashboard/docs/exemplos/board-layout.exemplo.json` (novo).
+- `dashboard/package.json`: só a linha do script `test`.
+
+Versão: esta entrega não tem número de versão. O `package.json` está em 0.4.0, da entrega de marca, e esta entrega não altera o número.
+
+### Testes
+- `node --test src/shared/board-layout.test.js`: 76 testes, 76 passando (tester).
+- `npm test` em `dashboard/`: 936 passaram, 0 falharam, código de saída 0 (tester). O total inclui testes de outras frentes que entraram na lista do script; a contagem sobe com o tempo.
+- Propriedade com três sementes (20261107, 7331, 424242): 750 normalizações por semente e duas sequências de 300 operações. Nenhuma violação de travado em 1.800 operações, nenhuma colisão entre módulos visíveis, `x + w` sempre até 12, as 4 baías sempre presentes, idempotência ok. Pior operação medida: 0,46 ms (`add`), com validação dentro de cada chamada.
+- Aliasing: 485 operações que mudaram o estado, nenhuma com objeto compartilhado com a entrada.
+- Schema × motor: o motor nunca aceita o que o schema recusa. O schema é mais frouxo em id repetido, `x + w > 12` e colisão, como ele mesmo declara.
+- Contraste dos tokens Arena, calculado por script (tester), não medido na tela: texto sobre chão, painel e tile entre 15,86 e 17,25; texto 2 entre 8,30 e 9,03; `#0b0d14` sobre os acentos entre 6,40 e 16,04; acentos como anel sobre o painel entre 5,94 e 14,89.
+- Revisão (revisor): três rodadas de correção. Achados corrigidos: `compact` não terminava com `y` muito grande; `remove` apagava módulo travado; operações devolviam objetos compartilhados com a entrada; `add` revelava e movia módulo oculto e travado; `resetProfile` destravava e reposicionava travados; `normalize` empurrava travado em vez de destravado; o schema aceitava combinações de tipo e id e nomes só com espaços, que o motor rejeita; a migração perdia o widget `pokecalc`.
+
+### Não confirmado
+- **Visual e tema Arena:** nada foi aplicado nem visto na tela.
+- **Custo do blur sobre `<webview>`** com quatro baías ativas: não medido. O protocolo está na §8 de `docs/modulos.md`.
+- **Arrasto real, teclado (setas e Shift+setas) e breakpoints** na tela: não implementados e não verificados.
+- **Contraste na tela real:** os números são de cálculo.
+- **Componentes BoardUI candidatos** (`stat-cards`, `table`, `command-palette`, `drawer`): `get_component` não foi consultado, e dock flutuante e gaveta não aparecem como item próprio no catálogo. Nenhum componente foi instalado.
+- **Itens Pro do BoardUI:** exigem licença, que não foi usada.
+- **`designeer.xyz`:** referência não conferida.
+- **Limites provisórios** dos tipos novos.
+
+### Limites conhecidos
+- O `<webview>` das baías não é virtualizado: desmontar derrubaria a sessão da conta. Baía fora da tela ou «removida» só fica oculta.
+- Não há persistência ainda. O formato futuro é `cfg.board` no `mesa-config.json`, gravado por `save()`.
+- O motor não é importado por `src/renderer`, `src/main`, `src/preload` nem `ui`.
+- O BoardUI não renderiza, move nem persiste widgets. Schema, snap, colisão, perfis e persistência são do próprio app.
+
+### Problemas conhecidos
+- Texto a 40% sobre o tile dá 3,52:1 e falha AA. A proposta troca por texto 2 sólido (8,30:1); não foi aplicada.
+- A borda `rgba(148,163,255,0.14)` dá 1,23:1 sobre o chão. Ela é separador decorativo, não contorno de controle.
+- A proposta Arena contraria o MASTER «Vigília» (um acento, sem degradê, sem neon, sem vidro). Decisão pendente do usuário.
+
+### Patch note
+
+**Patch «Módulos» · motor de layout e especificação · 07/11/2026**
+
+Resumo: o board de módulos ganha o motor puro de layout, com 76 testes próprios e a especificação. Nenhuma tela mudou; o motor ainda não está ligado à Mesa nem à Espera.
+
+**Novidades**
+- [Novo] Motor de layout puro: mover, redimensionar, adicionar, remover, perfis e migração do layout antigo.
+- [Novo] Módulo travado não se move, não se redimensiona e não é removido nem ocultado; sobrevive ao reset do perfil.
+- [Novo] Especificação `docs/modulos.md` e contrato `docs/board-layout.schema.json`.
+
+**Mudança de comportamento**
+- Nenhuma tela mudou. Nenhuma tela usa o motor.
+
+**Conhecidos**
+- Ligação às telas fica para a próxima entrega, com verificação no Electron.
+- Tema Arena é proposta, não aplicada; o Vigília segue padrão.
+- Custo do blur sobre as baías não medido.
+
+## 2026-11-07 — Calculadora de status na Espera
+
+> A Espera ganha a «Calculadora de status» (widget `pokecalc`). Ela busca o Pokémon na PokeAPI, calcula os stats e a recarga da skill com as fórmulas da especificação, e mostra o sprite normal ou shiny. Nasce oculta; aparece pelo menu Widgets. As fórmulas não foram conferidas no jogo, e o app Electron real não foi testado com a rede.
+
+### Destaques do patch
+- **Widget novo na Espera:** «Calculadora de status», oculto por padrão, largura 2, no fim da ordem.
+- **Busca só por clique:** a PokeAPI é consultada ao clicar em «Buscar» ou apertar Enter, nunca a cada tecla e nunca no boot.
+- **Cache local:** status base guardado no próprio aparelho (até 200 entradas), com o último resultado restaurado sem rede.
+- **Falha isolada:** se a calculadora não montar, a Espera segue com os outros widgets.
+
+### O que mudou
+- `standby-layout.js`: `pokecalc` entra no padrão e fica oculto. Estado salvo antigo sem o id recebe o widget no fim, oculto. A Espera passa de 11 para 12 widgets.
+- `standby.js`: rótulo «Calculadora de status» e montagem em try/catch. Se a montagem falhar, a moldura mostra «Calculadora indisponível.».
+- `poke-stats.js`: fórmulas e validação. Núcleo estrito (lança `TypeError` ou `RangeError` em pt-BR) e `normalizeInputs` para a UI, que limita, arredonda e nunca lança.
+- `poke-api.js`: `get()` com erros tratados (`entrada-invalida`, `nao-encontrado`, `erro-servidor`, `tempo`, `offline`, `resposta-invalida`), cache e buscas simultâneas iguais viram uma.
+- `poke-calc.js` e `poke-calc.css`: o widget, com busca, sprites com fallback, erros em pt-BR e «Sem imagem» se nada carregar.
+- Sprites: normal e shiny, na ordem `showdown` GIF, PNG e arte oficial. Com `prefers-reduced-motion`, o GIF sai da lista.
+- `package.json`: só o script `test` passa a incluir os dois arquivos de teste novos.
+- `poke-stats.js`: `formatAjuste` monta as frases de ajuste, testável pela suíte Node. Mostra a unidade na origem e no destino, com vírgula decimal pt-BR (ex.: «Qualidade 84% → 85%.»). Texto só com espaços vira ajuste com `de: ''`.
+- `poke-calc.js`: trocar shiny zera o sprite pendente e desconecta o observer antes de repintar, sem carregar o mesmo sprite duas vezes. Ao reabrir, campo vazio ou fora da faixa volta com o valor usado no cálculo; o estado salvo continua com o texto digitado até a próxima edição.
+- `index.html`: 1 link de CSS e 3 scripts.
+
+### Por quê
+Pedido do usuário: uma calculadora de status na Espera, com dados da PokeAPI e sprites. As fórmulas vêm da especificação dele. Usou-se JS com JSDoc em vez de TypeScript: o renderer carrega `<script>` cru, sem bundler, e mudar o pipeline não valia o risco. Isso é um desvio consciente do pedido original.
+
+### Arquivos de produto
+Lista feita por leitura do código e do diff. O diff de `dashboard/` mistura outras frentes ainda não commitadas, então esta lista não isola a entrega por completo:
+- `dashboard/src/shared/poke-stats.js` (novo) e `poke-stats.test.js` (novo).
+- `dashboard/src/shared/poke-api.js` (novo) e `poke-api.test.js` (novo).
+- `dashboard/src/renderer/poke-calc.js` (novo) e `poke-calc.css` (novo).
+- `dashboard/src/shared/standby-layout.js` e `standby-layout.test.js`.
+- `dashboard/src/shared/catalog.test.js`: só o array esperado de ids.
+- `dashboard/src/renderer/standby.js`: rótulo e montagem com try/catch.
+- `dashboard/src/renderer/index.html`: link e scripts.
+- `dashboard/package.json`: script `test`.
+
+### Testes
+- `npm test` em `dashboard/`: **936** passaram na rodada 3, segundo o relato do tester (poke-stats 39, poke-api 20, standby-layout 23, catalog 31 isolados). O total inclui testes da outra frente de trabalho, não só da calculadora. Na rodada 2, o tester fez 76 verificações numéricas independentes, sem divergência. Esta documentação não rodou a suíte.
+- Rodada 3, verificação adicional do tester: frases de ajuste conferidas na tela e por `require` direto; troca de shiny com restauração pendente sem requisição duplicada; sem requisição de rede no boot com o widget oculto.
+- Os números de teste batem à mão: 100 P5 shiny IV 31 L100 Q120 dá 7572; Bulbasaur L50 Q100 P1 IV 31 dá 380/400/400/480/480/380.
+- No navegador do painel, servido por HTTP local em 127.0.0.1 e sem `window.mesa`: busca, sprites, fallback, recarga, erros, cache, nenhuma requisição no boot com o widget oculto, restauração pelo último resultado, 375 px sem rolagem horizontal, tema claro, foco por teclado e exceção simulada em `mountPokeCalc` (a Espera seguiu com os outros 11 widgets).
+
+### Não confirmado
+- **Fórmulas no jogo:** não conferidas. Seguem a especificação do usuário.
+- **Suposições do cálculo:** o Speed do cooldown é o Speed final; o IV é um só para os 6 stats.
+- **Electron real:** a busca a partir de `file://` com `webSecurity` ligado nunca foi testada. A janela não tem CSP, e o bloqueador de rastreadores em `src/main/index.js` não cobre esses domínios.
+- **Persistência:** o layout (`cfg.standby`) depois de reiniciar não foi verificado.
+- **Arraste real:** com o mouse, na última rodada, não foi verificado. O menu «Mover antes» foi verificado.
+- **Verificação de tipos:** o TypeScript não foi rodado; a checagem com `@ts-check` é opcional.
+- **Design:** a exceção de sprites e GIFs ao `design-system/mesa/MASTER.md` está pendente de confirmação do usuário. O `MASTER.md` não foi alterado.
+
+### Limites conhecidos
+- Sprites e GIFs ficam só dentro desse widget, oculto por padrão e estático com reduced-motion.
+- Dados do jogo (drop, rota, tier real do PokéIdle, piddb e Hayenn) não foram verificados, e o módulo não tem essa camada.
+
+### Problemas conhecidos
+1. A frase de ajuste arredonda o valor de origem a 1 casa decimal («12.55» vira «12,6»). A frase de qualidade fora da faixa só aparece por código, porque o slider limita 85 a 120 na UI.
+2. Nomes com acento, ponto ou símbolo («Mr. Mime», «Nidoran♀», «Flabébé») viram entrada inválida. Use o número ou o nome como a PokeAPI escreve (`mr-mime`, `nidoran-f`).
+4. `type=number` com vírgula (pt-BR): digitar «10,5» pode gerar campo vazio em alguns builds. O widget usa o padrão e avisa «Recarga vazia: calculando com 10 s.». Não testado no Electron.
+4. O GIF animado do `showdown` falhou no painel de pré-visualização e caiu para o PNG. Foi do ambiente; não confirmado no Electron.
+
+### Patch note
+
+**Calculadora de status na Espera · 07/11/2026**
+
+Resumo: a Espera ganha a Calculadora de status, oculta por padrão. Ela busca o Pokémon na PokeAPI e calcula stats e recarga com as fórmulas da especificação. As fórmulas não foram conferidas no jogo.
+
+**Espera**
+- [Novo] Widget «Calculadora de status», oculto por padrão; aparece pelo menu Widgets. Antes: 11 widgets. Depois: 12 widgets.
+- [Novo] Largura 2, no fim da ordem. Estado salvo antigo ganha o widget no fim, oculto.
+- [Novo] Busca na PokeAPI por número ou nome, só ao clicar em «Buscar» ou apertar Enter.
+- [Novo] Sprite normal ou shiny, com fallback até a arte oficial; «Sem imagem» se nada carregar.
+- [Novo] Último resultado restaurado do cache, sem rede.
+- [Correção] Falha na montagem da calculadora não derruba a Espera: mostra «Calculadora indisponível.» e os outros widgets seguem.
+
+**Cálculo**
+- [Novo] Stats finais com base, tier P1 a P5, shiny, IV, nível e qualidade; recarga com redução por Speed, piso de 0,5 s.
+- [Ajuste] Tiers em aritmética inteira: 100 × P4 dá 115, não 114.
+
+**Ajustes**
+- [Ajuste] Campo vazio usa o padrão e avisa na tela («IV vazio: calculando com 31.»); o campo não é reescrito.
+- [Ajuste] `undefined` e `null` valem o padrão sem aviso.
+- [Correção] Texto só com espaços vira ajuste com `de: ''` e a frase «IV vazio: calculando com 31.». Antes: «IV   → 31.».
+- [Ajuste] Frases de ajuste com unidade na origem e vírgula decimal pt-BR: «Qualidade 84% → 85%.», «Recarga 0 s → 0,1 s.». Antes: sem unidade na origem e com ponto decimal.
+- [Novo] Ao reabrir a Mesa, campo vazio ou fora da faixa volta com o valor usado no cálculo; o texto digitado continua salvo até a próxima edição.
+- [Ajuste] Trocar shiny não carrega o mesmo sprite duas vezes.
+
+**Testes**
+- [Novo] `poke-stats.test.js` e `poke-api.test.js` entram no script `npm test`.
+
+**Conhecidos**
+- Fórmulas não conferidas no jogo; o Speed do cooldown e o IV único são suposições.
+- Electron real não testado com a rede: `file://`, `webSecurity` e o bloqueador de rastreadores.
+- Nomes com acento ou símbolo viram entrada inválida; use o número ou o nome da PokeAPI.
+- Sprites e GIFs são exceção ao design pendente de confirmação do usuário.
+
+## 2026-11-07 — Patch 0.4.0 · PokeIdle Automation: marca, instalador e atualizador
+
+> O app «Mesa» vira PokeIdle Automation, com logo, nomes novos de executável e um instalador. O atualizador passa a baixar o asset certo para cada modo e só fecha o app depois de abrir o instalador. A release precisa publicar os três arquivos. O instalador e o fluxo real de atualização não foram executados de ponta a ponta.
+
+### Destaques do patch
+- **Nome e marca:** PokeIdle Automation, com logo circular como ícone da janela, dos executáveis e no cabeçalho das telas.
+- **Dois instaladores:** `PokeIdle-Automation-Setup.exe` (instalador) e `PokeIdle-Automation.exe` (portátil), mais o alias `Mesa.exe`.
+- **Atualizador corrigido:** o portátil troca o próprio arquivo, e o app só fecha se o instalador abriu.
+
+### O que mudou
+- **Marca:** logo circular «POKEIDLE AUTOMATION» (Pikachu de óculos numa pokébola robótica) como ícone da janela e da barra de tarefas, ícone dos executáveis e marca circular de 28px como primeiro item do `.page-head` nas telas Automações, Espera e Configurações. `alt` e `title` com o nome do produto.
+- **Nome:** nome visível «PokeIdle Automation». Fonte única em `src/shared/brand.js`; `package.json` repete os mesmos valores, e `src/shared/brand.test.js` falha se divergirem. Não mudaram: `appId` `local.mesa.pokeidle`, `name` npm `mesa-pokeidle`, repositório `pdrfps1/mesa-pokeidle`, a pasta de dados `%APPDATA%\Mesa` e os identificadores internos (`window.mesa`, classes `mesa-*`, `data-theme="mesa"`, `mesa-config.json`). A tela de Automações continua com o id interno `mesa` (o rótulo visível no dock já era «Automações» e não mudou).
+- **Instalador:** NSIS assistido, por usuário (sem UAC), com escolha de pasta, atalho na área de trabalho e no menu Iniciar, desinstalador, idioma pt-BR, ícone da logo, imagem lateral e de cabeçalho em azul-marinho `#00173F`.
+- **Build:** `npm run dist` roda `scripts/dist.js` (antes `dist-portable.js`) e gera em `dist/` os três arquivos. `signAndEditExecutable` ficou `true`; o ícone vai no executável.
+- **Atualizador (`src/main/updater.js`):** dois modos. Portable baixa `PokeIdle-Automation.exe` (reserva `Mesa.exe`) e troca `PORTABLE_EXECUTABLE_FILE`. Instalado baixa `PokeIdle-Automation-Setup.exe`, abre-o com `--updated` e fecha o app depois que o processo abriu.
+- **Textos:** onde o app era chamado de «Mesa» como nome do produto, passou a «PokeIdle Automation» ou «o app» (`instalar.ps1`, aviso do atualizador, Espera, descrição do pacote). `aria-label` do dock virou «Navegação principal».
+- **Versão:** `package.json` em 0.4.0, para o comparador oferecer a atualização.
+
+### Por quê
+O produto ganhou nome e marca próprios, e a instalação precisava de um instalador comum além do portátil. O atualizador tinha dois problemas: no portátil, `process.execPath` apontava para a cópia extraída em pasta temporária, e o app fechava sem saber se o instalador ou a troca tinha aberto.
+
+### Arquivos de produto
+Lista feita por leitura do código e do diff. O diff de `dashboard/` mistura outras frentes ainda não commitadas, então esta lista não isola a entrega por completo:
+- `dashboard/package.json`: `productName`, `version` 0.4.0, bloco `build` (nomes de arquivo, NSIS, ícones).
+- `dashboard/src/shared/brand.js` (novo) e `dashboard/src/shared/brand.test.js` (novo).
+- `dashboard/src/main/updater.js`: modos, alvo do portable, `schedulePortableReplace`, `startDetached`, `findReleaseAsset`, `fetchReleaseAsset`.
+- `dashboard/src/main/index.js`: `app.setName`, `setAppUserModelId`, pasta de dados, título da janela.
+- `dashboard/src/renderer/updates.js`: texto do toast «Atualização em andamento», sem «Ver detalhes».
+- `dashboard/src/renderer/view.js`: marca de 28px no `.page-head`, `aria-label` do dock.
+- `dashboard/src/renderer/app.css`: `.brand-mark`, `.page-head`.
+- `dashboard/src/renderer/standby.js`: nome do produto nos textos da Espera.
+- `dashboard/src/renderer/index.html`: `<title>` «PokeIdle Automation».
+- `dashboard/scripts/dist.js` (renomeado de `dist-portable.js`), `dashboard/scripts/build-brand-assets.py` (novo).
+- `dashboard/build/`: `logo-source.webp`, `icon.png`, `icon.ico`, `installerSidebar.bmp`, `uninstallerSidebar.bmp`, `installerHeader.bmp`.
+- `dashboard/src/assets/brand/`: `icon.ico`, `logo-256.png`, `logo-64.png`, `logo-32.png`.
+- `dashboard/instalar.ps1`: textos.
+- `dashboard/README.md`, `dashboard/docs/projeto.md`, `dashboard/docs/modulos.md`, `design-system/mesa/MASTER.md` (seção «Marca»).
+
+### Testes
+- `src/shared/brand.test.js` confere os nomes com o `package.json` e a existência dos ícones e imagens do instalador.
+- `src/main/updater.test.js` cobre os helpers do atualizador (testes unitários). Não cobre o download real nem a troca de arquivo.
+- `npm test` em `dashboard/`: **922** passaram, 0 falharam, segundo o tester (conta a suíte inteira do checkout, que inclui testes de outras frentes). Esta documentação não rodou a suíte.
+- Build isolado (cópia fora do checkout, sem alterar o `package.json`): `npm run dist` saiu com código 0. Conferidos: ícone da logo nos três executáveis e no `win-unpacked`, `ProductName` «PokeIdle Automation» e `FileVersion` 0.4.0. O `startDetached` foi exercitado com um comando inexistente (rejeita com ENOENT, sem exceção solta) e com um processo real (resolve).
+- Janela ao vivo (`npm start`, lida por CDP, sem interagir com baías nem Twitch): título «PokeIdle Automation»; `.brand-mark` como primeiro item do `.page-head` em Automações, Espera e Configurações, nos temas `mesa` e `mesa-claro` (64px carregado, 28×28, redonda, sem franja branca); sem rolagem horizontal do documento a 900, 1280 e 1424px; a marca não recebe foco do teclado; sem erro de console além do aviso de CSP do Electron em desenvolvimento.
+
+### Não confirmado
+- **Instalador:** não rodado. Foi só inspecionado (`build/` e opções do NSIS no `package.json`).
+- **Atualização de ponta a ponta:** nem portable nem instalado foram rodados. Falta publicar uma release para ver o fluxo real.
+- **Ícone na barra de tarefas:** não foi capturado. O ícone da janela (barra de título) mostra a logo.
+- **Onde estão os arquivos:** o build rodou numa cópia fora do checkout. Os três executáveis foram copiados para `dashboard/dist/0.4.0/` (`PokeIdle-Automation-Setup.exe`, `PokeIdle-Automation.exe`, `Mesa.exe`), com hash conferido. O `Mesa.exe` antigo e o `win-unpacked` de `dashboard/dist/` não foram tocados.
+
+### Limites conhecidos
+- O instalador tem tema escuro só na lateral, no cabeçalho e nos ícones. O corpo das páginas segue o tema do Windows.
+- O build não é assinado (sem certificado): o SmartScreen pode avisar.
+- O instalador baixado é validado só pelo tamanho anunciado pela release. Não há hash nem assinatura.
+- Portable e instalado dividem a pasta `%APPDATA%\Mesa`: não abra os dois ao mesmo tempo.
+
+### Problemas conhecidos
+- **Instalador sem tema escuro completo:** só lateral, cabeçalho e ícones levam a identidade.
+- **Logo pouco legível em tamanho pequeno:** a logo cheia fica ilegível a 16px e pouco legível a 28px no cabeçalho (o texto «POKEIDLE» é pequeno). Dá para trocar por uma versão simplificada (só Pikachu e pokébola) depois.
+- **Fluxo real não testado:** instalação e atualização (portable e instalado) só têm inspeção e teste unitário. Falta publicar uma release e instalar uma versão de teste sobre a atual.
+- **App fecha logo após abrir o instalador:** se o NSIS encontrar o app ainda aberto, pode pedir para fechar. Precisa de teste manual.
+- **Sem assinatura:** o SmartScreen pode avisar.
+- **Dados compartilhados:** portable e instalado usam a mesma pasta `%APPDATA%\Mesa`.
+- **Descrição do pacote:** a `description` do `package.json` é «Mesa local do PokeIdle Automation com quatro baías.». É proposital: aparece nas propriedades do instalador e do portátil. O executável interno mostra só «PokeIdle Automation» como descrição, que é o nome que o Gerenciador de Tarefas exibe.
+
+### Patch note
+
+**Patch 0.4.0 · PokeIdle Automation · marca, instalador e atualizador · 07/11/2026**
+
+Resumo: o app agora se chama PokeIdle Automation, com logo, dois instaladores e um atualizador que só fecha o app depois de abrir o instalador. A release precisa publicar os três arquivos. Instalador e atualização de ponta a ponta ainda não foram testados.
+
+**Destaques**
+- [Novo] Logo circular como ícone da janela, dos executáveis e no cabeçalho.
+- [Novo] Instalador `PokeIdle-Automation-Setup.exe` e portátil `PokeIdle-Automation.exe`, com o alias `Mesa.exe`.
+- [Novo] Atualizador com dois modos, instalado e portátil.
+
+**Marca**
+- Antes: nome «Mesa», sem logo. Depois: nome «PokeIdle Automation» e logo circular de 28px no cabeçalho das telas Automações, Espera e Configurações.
+- Antes: sem a logo nova. Depois: logo nos ícones da janela, da barra de tarefas e dos executáveis.
+
+**Instalador**
+- Antes: portátil apenas. Depois: instalador assistido por usuário (sem UAC), com escolha de pasta, atalhos e desinstalador, em pt-BR.
+- Antes: sem o instalador e sem a identidade nova. Depois: lateral, cabeçalho e ícones em azul-marinho `#00173F`.
+
+**Atualizador**
+- Antes: no portátil, a troca apontava para a cópia extraída em pasta temporária. Depois: troca o arquivo indicado por `PORTABLE_EXECUTABLE_FILE`.
+- Antes: o app fechava sem confirmar a abertura. Depois: fecha só depois que o processo abriu; se falhar, continua aberto e mostra o erro.
+- Antes: toast «Atualização em andamento» com «Ver detalhes». Depois: sem «Ver detalhes».
+
+**Interface**
+- Antes: textos com «Mesa» como nome do produto. Depois: «PokeIdle Automation» ou «o app».
+- Antes: `aria-label` do dock «Mesa». Depois: «Navegação principal».
+
+**Bugs corrigidos**
+- [Correção] Portátil: a atualização trocava o arquivo errado (cópia da pasta temporária). Agora troca o `PORTABLE_EXECUTABLE_FILE`.
+- [Correção] Download com tamanho errado mostra «O download da atualização ficou incompleto. Tente de novo.».
+- [Correção] O app fechava sem saber se o instalador ou a troca tinha aberto.
+
+**Problemas conhecidos**
+- Instalador sem tema escuro completo: só lateral, cabeçalho e ícones.
+- Logo cheia pouco legível a 16px e a 28px.
+- Instalador e atualização (portable e instalado) não foram rodados de ponta a ponta.
+- Ao abrir o instalador, o app fecha logo; se o NSIS encontrar o app aberto, pode pedir para fechar.
+- Instalador validado só pelo tamanho; build sem assinatura, o SmartScreen pode avisar.
+- Portable e instalado dividem `%APPDATA%\Mesa`.
+
+## 2026-11-07 — Patch 0.3.5 «Vigília» · widgets da Twitch na Espera
+
+> A Espera ganha cinco widgets da Twitch: «Bônus Twitch» e «Twitch · Baía 1» a «Twitch · Baía 4». Todos começam ocultos e aparecem pelo menu Widgets. O painel de Configurações continua igual. Nada disso foi visto na tela nem testado na Twitch real.
+
+### Destaques do patch
+- **Cinco widgets na Espera:** «Bônus Twitch» (duas colunas) e uma «Twitch · Baía N» por baía (uma coluna cada), ocultos por padrão.
+- **Um controlador para as duas telas:** Configurações e Espera usam a mesma inscrição, o mesmo `liveGet` e a mesma repintura a cada 30 s.
+- **Erro no lugar da ação:** falha de ação na Espera aparece na própria baía e some na próxima ação que der certo.
+
+### O que mudou
+- `standby-layout.js`: são 11 ids. Padrão: «Bônus Twitch» com 2 colunas, as baías da Twitch com 1, e os cinco ocultos. Estado salvo com os 6 ids antigos ganha os 5 novos no fim, ocultos; os ocultos salvos dos antigos são preservados. «Restaurar padrão» oculta os 5.
+- `standby.js`: títulos «Bônus Twitch» e «Twitch · <nome>»; o nome segue o da baía (nome dado, apelido do jogo com a conta logada, ou «Baía N»). O corpo vem de `mountLiveBonusStandby`; sem ele, a moldura mostra «Disponível no aplicativo.». Ao mostrar um widget da Twitch, o conteúdo é repintado.
+- `live-bonus.js`: `criarControlador` (uma inscrição em `onLiveStatus`, um `liveGet`, um `setInterval` de 30 s) e `criarVista`, com modo «ajustes» (Configurações) e «espera» (Espera). Ids com prefixo: `live-bonus` e `live-bonus-espera`.
+- `live-bonus.js`: `.catch` em `liveGet` e `liveKickOpen`; antes, a rejeição ficava sem tratamento. `aria-describedby` do Foco só existe quando há aviso.
+- `espera.css`: regras dentro de `.standby-widget` para o bloco da Twitch. O bloco de lives rola na horizontal; a lista de canais oficiais tem altura máxima de 240px e rolagem própria.
+- Erros da Espera: ação de baía mostra o erro na própria baía (`aria-live="polite"`, sem `role`). Leitura inicial e falha ao abrir a Kick aparecem no erro geral da Espera.
+- Layout da Espera só grava `cfg.standby`. Não chama IPC da Twitch nem muda `cfg.twitch` ou `twitchAuto`.
+
+### Por quê
+O pedido é levar a Twitch para a Espera, com cada baía como widget. O código reaproveita o bloco de Configurações (um controlador, duas vistas) em vez de manter duas cópias da lógica.
+
+### Arquivos de produto
+Lista feita por leitura do código e do git. `dashboard/` tem commits (o último é `8938dc7`, de 2026-11-06), mas o diff de trabalho mistura alterações ainda não commitadas de outras entregas. Por isso a lista não isola esta entrega:
+- `dashboard/src/shared/standby-layout.js`: `IDS`, `SPAN_PADRAO`, `HIDDEN_PADRAO`, `reset`, `normalize`.
+- `dashboard/src/renderer/standby.js`: `standbyLabel`, `twitchBayTitulo`, `corpoTwitch`, `mountStandby`, `applyStandbyLayout`.
+- `dashboard/src/renderer/live-bonus.js`: `liveBonusControlador`, `criarControlador`, `criarVista`, `mountLiveBonusStandby`, `paintLiveBonus`.
+- `dashboard/src/renderer/espera.css`: bloco `.standby-widget .live-bonus-*`.
+
+Versão: o número 0.3.5 foi escolhido pela equipe (decisão do usuário). `dashboard/package.json` segue em 0.3.2, igual ao HEAD, e não foi tocado nesta entrega. O arquivo tem mudanças de `scripts` e `devDependencies` ainda não commitadas, fora do escopo desta entrega.
+
+### Testes
+- `npm test` em `dashboard/`: **786** passaram, segundo o relato da entrega. A documentação não rodou a suíte.
+- `src/renderer/live-bonus.test.js`: **66** testes, antes 74. Segundo o relato, foram retirados 13 repetidos, com um teste por cenário. A suíte cobre o corte de 24 botões com total 999 (limites de `points.js`: `BOTOES_CENTRO_MAX_LIMPO` e `CONTAGEM_MAX`), o modo Espera (erro por baía, erro geral e prévia sem `window.mesa`), `btn-active` e `is-parado`.
+- `src/shared/standby-layout.test.js`: 23 testes; 5 cobrem os widgets da Twitch (padrão, `reset`, estado com os 6 ids antigos, `hidden` salvo, mostrar um só).
+- As mutações feitas na entrega (desfazer dois pontos de controle) fazem testes falharem, segundo o relato.
+- `src/main/twitch/erros-log.test.js`: **12** testes, fora do script `test`.
+- `standby.js` não tem teste no `npm test`.
+
+### Não confirmado
+- Visual da Espera e das Configurações: não conferido na tela. A Mesa do usuário estava aberta, e o código não tem variável de teste para abrir a tela isolada.
+- IPC real e Twitch real: não testados nesta entrega.
+- Leitor de tela: não verificado. Cada baía da Twitch tem uma linha de estado com `role="status"`.
+- Layout salvo depois de reiniciar: não verificado.
+- Os 786 testes: informados, não rodados pela documentação.
+- `live-bonus.test.js`: 74 − 13 = 61, e o total é 66. Os 5 testes acrescentados não estão listados no relato.
+
+### Limites conhecidos
+- A lista «Kick ao vivo» não tem altura máxima. O widget cresce com ela, e o quadro rola.
+- Na ordem padrão, os cinco widgets da Twitch ficam depois de «Recursos do app».
+- Nas Configurações, falha de leitura e falha da Kick não aparecem na tela, como antes.
+
+### Problemas conhecidos
+- «Não foi possível abrir a live da Kick.» quase não aparece. `openOutside` (`src/main/live-login.js`, linhas 8 a 13) engole a falha de `shell.openExternal` e URL inválida, e `live:kick-open` (`src/main/live/service.js`, linhas 70 a 76) devolve o snapshot de qualquer forma. Só falha do próprio IPC cai no `.catch`.
+- O `.catch` de `liveGet` (`live-bonus.js`, ~319 a 322) também pega erro de `ctl.aplicar` no primeiro snapshot e mostra `error.message` (`liveBonusMensagemErro`, ~238 a 240) como falha de leitura.
+- «Nenhuma live da Kick no ar.» aparece antes do primeiro snapshot (`paintKick`, ~846 a 853), logo abaixo do erro geral.
+- Os contêineres de erro nascem `hidden` e recebem texto depois (`live-bonus.js` ~378 a 380 e ~572 a 575). Leitor de tela pode não anunciar.
+- Erro de ação da baía some após sucesso. O erro do topo das Configurações não some (já era assim).
+- `erros-log.test.js` (12 testes) passa isolado, mas não está no script `test` do `package.json`. Já estava registrado.
+
+### Patch note
+
+**Patch 0.3.5 «Vigília» · widgets da Twitch na Espera · 07/11/2026**
+
+Resumo: a Espera ganha cinco widgets da Twitch, ocultos por padrão: «Bônus Twitch» e uma «Twitch · Baía N» por baía. Configurações não muda. Nada disso foi visto na tela nem testado na Twitch real.
+
+**Espera > Integração Twitch**
+- [Novo] «Bônus Twitch» na Espera, com Recompensas, notas, erro geral e Kick ao vivo. Duas colunas, oculto por padrão.
+- [Novo] «Twitch · Baía N» para cada baía, com luz de estado, interruptor, lives, Foco e ações. Uma coluna, oculto por padrão; aparece pelo menu Widgets.
+- [Novo] Erro de ação aparece na própria baía e some na próxima ação que der certo.
+- [Ajuste] Estado salvo antigo: os cinco entram no fim, ocultos. «Restaurar padrão» os oculta de novo.
+- [Ajuste] Lista de canais oficiais de cada baía com altura máxima de 240px e rolagem própria. Bloco de lives rola na horizontal dentro do widget.
+
+**Correções e qualidade de vida**
+- [Correção] Leitura inicial e abertura da Kick tratam a falha. Antes, a rejeição ficava sem tratamento.
+- [Ajuste] Um controlador para Configurações e Espera: uma inscrição, um `liveGet` e uma repintura a cada 30 s.
+- [Ajuste] `aria-describedby` do Foco só existe quando há aviso.
+- [Ajuste] `live-bonus.test.js` passou de 74 para 66, com um teste por cenário.
+
+**Notas técnicas**
+- `standby-layout.js`: 11 ids, com padrão de largura e de ocultos.
+- `live-bonus.js`: `criarVista(ctl, prefixo, modo)`; ids com prefixo `live-bonus` e `live-bonus-espera`.
+- Ações de layout só mudam `cfg.standby`.
+- Ordem de carga: `standby.js`, `live-bonus.js` e `view.js`, que chama as duas montagens.
+
+**Problemas conhecidos**
+- Mensagem de falha da Kick quase não aparece: `openOutside` engole a falha do sistema.
+- Erro de aplicação do primeiro snapshot pode aparecer como falha de leitura.
+- «Nenhuma live da Kick no ar.» aparece antes do primeiro snapshot.
+- Erros nascem ocultos e recebem texto depois; leitor de tela pode não anunciar.
+- Erro do topo nas Configurações não some após sucesso (já era assim).
+- Lista da Kick sem altura máxima.
+- `erros-log.test.js` fora do script `test`.
+
+## 2026-11-07 — Patch «Vigília» · um resgate por vez e diagnóstico no log
+
+> Só um resgate roda por vez em toda a Mesa, entre baías e lives, mesmo com contas diferentes; entre dois resgates há 20 s. O diagnóstico de falha saiu do painel e fica no log de resgates. Na Twitch real, em tftoddy, XP e Captura foram confirmados com multi-live; Shiny ficou sem clique.
+
+### Destaques do patch
+- **Um resgate por vez:** trava global entre baías e lives, com intervalo de 20 s entre resgates.
+- **Painel limpo:** uma frase curta por falha e a nota «Detalhes no log de resgates.».
+- **Na fila:** baía que espera a vez mostra «Na fila» e não conta falha.
+
+### O que mudou
+- **Um resgate por vez:** `outraLiveOcupada` (`controller.js`) segura a baía quando outra tem resgate pendente ou soltou/resgatou há menos de `INTERVALO_RESGATE_MS` (20 s, `points.js`).
+- **Ordem que gira:** a vez começa na baía seguinte à última que resgatou (`vez = (i + 1) % BAYS`). Sem resgate, segue de 0 a 3.
+- **Trava na conta, em todas as baías:** `travadosDaConta` filtra as travas globais pela conta, não pela baía que clicou.
+- **Leitura de bônus velha:** usa o maior prazo por tipo entre as baías com o mesmo login.
+- **Na fila:** `outra-live` mostra «Na fila» e «Outra live está resgatando. Este resgate vem depois.» (`live-bonus.js`). Sai sem registrar falha nem log.
+- **Painel:** a linha de último resgate mostra a frase curta, por exemplo «XP falhou às 01:16: recompensa indisponível agora (canal)», mais «Detalhes no log de resgates.». Percurso, Vi, diálogos, botões, card, fase, clicou, cabeçalho e Diag saíram da tela.
+- **Log:** `comDiag` (`controller.js`) anexa `detalhe.diag` às falhas e aos cliques sem confirmação. Antes, esse diagnóstico não ia ao log.
+- **Regra de clique:** a terceira exceção, card da lista pelo número do custo exato, foi autorizada pelo usuário em 2026-11-07. Está documentada em `projeto.md`.
+
+### Por quê
+Pedido do usuário: não resgatar em duas lives juntas. No log de 2026-11-07 não havia duplicata; o furo era entre baías com a mesma conta. Agora só um resgate roda por vez em toda a Mesa. O usuário também pediu tirar os diagnósticos da tela e deixá-los nos logs.
+
+### Mudança de comportamento
+- Um resgate em curso segura as outras baías. Pior caso de 180 s (`PRAZO_CONFIRMACAO_MS`), não medido.
+- Baía que espera não grava falha nem log.
+- Clique sem confirmação vale para a conta em todas as baías, não só na que clicou.
+- Painel sem diagnóstico; o detalhe fica em `%APPDATA%\Mesa\logs\twitch-resgate.log`.
+
+### Arquivos de produto
+Lista feita por leitura e busca no código. O repositório ainda não tem commit (branch `master` sem commits), então o diff não isola esta entrega. Trechos confirmados:
+- `dashboard/src/main/twitch/controller.js`: `outraLiveOcupada`, `travadosDaConta`, ordem por vez, prazo maior por tipo, `comDiag`.
+- `dashboard/src/main/twitch/points.js`: `INTERVALO_RESGATE_MS`, `PRAZO_CONFIRMACAO_MS`, `limparDiag`.
+- `dashboard/src/renderer/live-bonus.js`: «Na fila», frase curta, nota de log, retirada do diagnóstico.
+- `dashboard/src/renderer/live-bonus.test.js`: lista `TERMOS_FORA_DA_TELA`.
+
+### Testes
+- `npm test` em `dashboard/`: **784** passaram em 2026-11-07, segundo o relato do usuário; mais **12** de `erros-log.test.js`, fora do script. A documentação não rodou a suíte.
+- Simulação de 4 baías × 4 lives por 4 h: nenhum resgate simultâneo (relato do usuário).
+
+### Confirmado na Twitch real (2026-11-07, tftoddy)
+- **XP** às 01:15:38 e **Captura** às 01:16:06: confirmados, com multi-live e correção do saldo.
+- **Shiny** às 01:16:28: Redeem desabilitado, sem clique e sem gasto. Causa provável: saldo insuficiente, não confirmada, porque o log não grava o saldo.
+- Isto substitui qualquer frase anterior de que o resgate do multi-live não fechou.
+- Não rodaram na Twitch real: a trava global, o foco e o painel limpo.
+
+### Não confirmado
+- Causa do Shiny (saldo insuficiente): inferência; o log não grava saldo.
+- Espera de até 180 s no pior caso: mapeada pela constante, não medida.
+- Trava global, foco e painel limpo: sem rodada na Twitch real.
+
+### Limites conhecidos
+- Tentativas sem clique podem se repetir, sem gastar pontos.
+- Ao tirar um canal, pode sair um resgate nele no tick seguinte.
+- A trava vive só em memória.
+
+### Patch note
+
+**Patch «Vigília» · um resgate por vez · 07/11/2026**
+
+Resumo: só um resgate roda por vez em toda a Mesa, com 20 s entre um e outro. O diagnóstico de falha sai do painel e vai para o log. XP e Captura confirmados na Twitch real; Shiny ficou sem clique.
+
+**Novidades**
+- [Novo] Um resgate por vez entre baías e lives, com contas diferentes; intervalo global de 20 s.
+- [Novo] Baía que espera a vez mostra «Na fila», sem contar falha.
+
+**Correções**
+- [Correção] Diagnóstico completo (percurso, Vi, diálogos, botões, fase, diag) vai para o log, não para a tela.
+
+**Ajustes**
+- [Ajuste] Painel mostra uma frase curta por falha e «Detalhes no log de resgates.».
+- [Ajuste] A ordem entre baías gira a cada resgate.
+- [Ajuste] Leitura de bônus velha usa o maior prazo da mesma conta.
+
+**Mudança de comportamento**
+- [Mudança] Clique sem confirmação vale para a conta em todas as baías.
+- [Mudança] Baía em espera não grava falha nem log.
+- [Mudança] Terceira exceção à regra de clique: card da lista pelo número do custo exato, autorizada pelo usuário.
+
+**Conhecidos**
+- Tentativas sem clique podem se repetir, sem gastar pontos.
+- Ao tirar um canal, pode sair um resgate nele no tick seguinte.
+- Trava só em memória.
+- Shiny às 01:16 ficou sem clique; causa provável saldo insuficiente, não confirmada.
+
+## 2026-11-07 — Patch «Vigília» · saldo do Redeem e foco por live
+
+> Cada live ganha um foco (Automático, XP, Captura ou Shiny). Com foco, a live gasta só naquele bônus e guarda o saldo até dar o custo. O botão de saldo deixa de ser lido como recompensa no Redeem. Nada disso foi testado na Twitch real.
+
+### Destaques do patch
+- **Foco por live:** seletor Foco em cada linha de live, salvo por canal e mantido entre vagas.
+- **Saldo que não resgata:** o botão de saldo, com número exato ou com o texto abreviado do resumo, não é mais clicado como recompensa.
+- **Boost desligado avisado:** aviso e botão «Ligar X» na própria linha, em que X é o boost do foco.
+
+### O que mudou
+- **Botão de saldo:** `saldoDoResumo` lê o saldo uma vez por fluxo de resgate. `eBotaoSaldo` reconhece o botão de saldo exato (número igual ao saldo) ou com texto idêntico ao saldo abreviado do resumo (ex.: 1.2K). Saldo ilegível não exclui nenhum botão.
+- **Lista do Redeem:** o card real e o botão de saldo são ambos só número. O botão de saldo só sai da lista se tiver `aria-label` preenchido; a checagem é de presença do atributo, sem ler o texto.
+- **Foco por canal:** `twitchFoco` na baía (login em minúsculas para xp, captura ou shiny; ausência da chave é Automático; até 64 entradas), normalizado em `catalog.js`. O foco acompanha o canal entre vagas; canal novo começa em Automático.
+- **Escolha entre lives:** live com foco só gasta naquele tipo e guarda o saldo até dar o custo. Com as duas com saldo, vence a focada. Automático pode pagar um boost focado por outra live sem saldo. Sem candidato, vale a espera agregada já existente.
+- **Boost desligado em Recompensas:** a opção mostra «(desligado)», a linha mostra um aviso e o botão «Ligar X», que liga só o boost do foco (XP, Captura ou Shiny). Live com foco num tipo desligado só junta pontos.
+
+### Por quê
+Falhas reais do log de 2026-11-06 e 07. Em tftoddy, `redeem-lista` com saldo acima de 1.000: o log indica saldo abreviado, mas o texto do botão não foi gravado, então é inferência forte. Em BengaPoints, `redeem-varios` com saldo exatamente 300, igual ao custo. Nos dois casos, o botão de saldo era lido como recompensa. O foco deixa cada live gastar só no bônus que o usuário escolheu.
+
+### Mudança de comportamento
+- Botão de saldo reconhecido deixa de contar como recompensa na lista do Redeem.
+- Foco por live altera a escolha de resgate entre as lives da baía.
+- O saldo do resumo é lido uma vez por fluxo, antes das buscas por custo.
+
+### Arquivos de produto
+Lista feita por leitura e busca no código. O diff de `dashboard/` mistura trabalho anterior ainda não commitado, então esta lista não é isolada por entrega:
+- `dashboard/src/shared/twitch-dom.js`: `saldoDoResumo`, `eSaldoExato`, `eBotaoSaldo`, `cardsPorCusto`, `acharRedeemPorTexto`, `resgatarFluxo`.
+- `dashboard/src/shared/catalog.js`: `mesaTwitchFoco`.
+- `dashboard/src/main/twitch/points.js`: escolha entre lives com foco.
+- `dashboard/src/main/twitch/controller.js`: `focoDe`, foco por vaga.
+- `dashboard/src/main/index.js`: foco por baía no estado.
+- `dashboard/src/renderer/live-bonus.js` e `live-bonus.css`: seletor Foco, aviso e «Ligar X».
+
+### Testes
+- `npm test` em `dashboard/`: **751** passaram em 2026-11-07, rodado na suíte final; mais **12** de `erros-log.test.js`, fora do script. A documentação não rodou a suíte.
+- Harness de foco com 8 h simuladas.
+- Reprodução com DOM falso dos dois casos do log (tftoddy e BengaPoints).
+- Capturas de prévia em 1024 e 1440 px, tema escuro e claro, sem rolagem lateral.
+
+### Não confirmado
+- **Nada disso rodou na Twitch real.** O multi-live chegou até a tela do Redeem na Twitch real, mas o resgate ainda não fechou.
+- Texto exato do botão de saldo de tftoddy: inferência pelo log abreviado.
+
+### Limites conhecidos
+- Trocar o foco com resgate já em curso não cancela esse resgate.
+- Foco num boost que o canal não oferece deixa os pontos parados e pode pausar o canal. Ex.: patopapao não tem card de 300.
+- Saldo sem `aria-label` e sem card do custo ainda pode ser clicado (regra antiga); clicar nele não resgata.
+
+### Patch note
+
+**Patch «Vigília» · saldo do Redeem e foco por live · 07/11/2026**
+
+Resumo: cada live ganha um foco de bônus, e o botão de saldo deixa de ser lido como recompensa no Redeem. Nada disso foi testado na Twitch real.
+
+**Novidades**
+- [Novo] Foco por live: Automático, XP, Captura ou Shiny, salvo por canal.
+- [Novo] Boost desligado em Recompensas mostra aviso e «Ligar X» na linha.
+
+**Correções**
+- [Correção] Botão de saldo com número exato (ex.: 300) ou abreviado (ex.: 1.2K) não é mais clicado como recompensa no Redeem.
+- [Correção] Saldo lido uma vez por fluxo de resgate.
+
+**Ajustes**
+- [Ajuste] Live com foco só gasta naquele bônus e guarda o saldo; com as duas com saldo, vence a focada.
+
+**Conhecidos**
+- Nada disso foi testado na Twitch real; o resgate do multi-live ainda não fechou.
+- Foco num boost que o canal não oferece deixa os pontos parados.
+- Saldo sem aria e sem card do custo ainda pode ser clicado, sem resgatar.
+
+## 2026-11-06 — Patch «Vigília» · multi-live: cada baía assiste até 4 lives
+
+> Cada baía assiste de 1 a 4 lives oficiais da Twitch ao mesmo tempo (padrão 4). Cada live é um widget no painel «Bônus Twitch», com a sua medição de ganho/h. A Twitch real ainda não foi testada com esta entrega.
+
+### Destaques do patch
+- **Até 4 lives por baía:** só canais oficiais; sem escolha, a Mesa escolhe sozinha.
+- **Fora do ar:** a escolha fica salva e volta sozinha; o resumo mostra «· X fora do ar» e o botão «Limpar fora do ar».
+- **Medição por vaga:** ganho/h por canal, com «Medindo» nos primeiros 15 min.
+
+### O que mudou
+- Config: `twitchStreams` (1 a 4, padrão 4) e `twitchCanais` por baía. Valor fora da faixa vira 4; canal inválido, repetido ou além do limite sai.
+- Painel «Bônus Twitch»: um widget por baía, com seletor de 1 a 4 lives e «Escolher canais (N de L)».
+- Pontos por canal, sem soma: a Mesa resgata numa live aberta com saldo, com uma janela por tick no total. Em 4 baías × 4 lives são 16 janelas.
+- Uma janela escondida da Twitch por vaga (`windows.js`), na partição da baía.
+- Log `%APPDATA%\Mesa\logs\twitch-resgate.log` traz canal e stream, e grava `confirmado`, `ganho` a cada 30 min, `trava-vencida`, `clicado-depois-da-troca` e `trava-por-troca-de-login`.
+
+### Por quê
+O usuário pediu mais de uma live por baía. Como os pontos são por canal, cada live rende em separado, e a medição por vaga mostra quanto cada uma dá.
+
+### Mudança de comportamento
+- **Trava de gasto duplo:** clique sem confirmação vira trava por conta e tipo, só em memória. Desligar o automático ou trocar de conta não solta mais a trava (decisão do usuário).
+- A trava sai quando o bônus da mesma conta sobe, ou vence em 3 h (`PRAZO_TRAVA_MS`). Bônus de outra conta não solta.
+- Reiniciar a Mesa limpa a trava e pode gerar um novo resgate.
+- Clique que chega depois de troca de login é atribuído à conta que clicou.
+
+### Arquivos de produto
+Lista feita por busca de termos no código, não pelo diff: `dashboard/` aparece como não rastreado no git, então o diff não estava disponível. Lidos:
+- `dashboard/src/main/twitch/controller.js`: decisão por baía e vaga, trava, medição e log.
+- `dashboard/src/main/twitch/points.js`: escolha de resgate por canal.
+- `dashboard/src/main/twitch/windows.js`: `createTwitchWindows`, uma janela por vaga.
+- `dashboard/src/shared/catalog.js`: `twitchStreams` e `twitchCanais`.
+- `dashboard/src/renderer/live-bonus.js`: widget por baía e resumo «fora do ar».
+
+Também aparecem na busca, sem leitura do conteúdo: `dashboard/src/main/index.js` e `dashboard/src/renderer/view.js`.
+
+### Testes
+- `npm test` em `dashboard/`: **713** passaram, segundo o relato da entrega. Esta documentação não rodou a suíte.
+- `src/main/twitch/erros-log.test.js` tem **12** testes e não entra no `npm test`.
+- Cenários com janelas falsas.
+- Capturas do painel em 1024 e 1440 px, temas escuro e claro, sem rolagem lateral e sem controle sem nome. As capturas foram feitas antes dos três últimos ajustes de contagem.
+
+### Não confirmado
+- **Nada disso rodou na Twitch real.**
+- **Limite de 2 streams:** não confirmado oficialmente; só relatos de terceiros. Hipóteses: H1, todas as lives contam (~1280 pts/h por baía); H2, só duas contam (~640 a 1040 pts/h); H3, acima de duas nada conta. Não há rotação: a medição por canal decide, e se indicar, reduz para 2.
+- **Roteiro de medição:** uma baía com 4 lives por 60 min, lendo o ganho/h de cada vaga; depois repetir com 4 baías.
+- **Consumo de 16 janelas:** não medido aqui. Estimativa de terceiros: ~4 GB de RAM e ~21% de CPU.
+
+### Limites conhecidos
+- Tentativas sem clique podem se repetir com login oscilando ou quando a página não responde. Não gastam pontos.
+- Expiração sem clique conta falha na baía inteira: três seguidas pausam o tipo por 1 h em todas as lives da baía.
+- Mesma conta em duas baías: uma trava não barra a outra.
+- Recarga numa troca de login pode derrubar um clique em curso (janela mínima).
+- Abertura por ordem de baía: a baía 4 pode começar ~26 s depois.
+
+### Patch note
+
+**Patch «Vigília» · multi-live · 06/11/2026 · cada baía assiste até 4 lives**
+
+Resumo: cada baía assiste de 1 a 4 lives oficiais da Twitch ao mesmo tempo, com medição de ganho/h por canal. A Twitch real ainda não foi testada.
+
+**Novidades**
+- [Novo] Até 4 lives por baía, com escolha de canais oficiais no painel «Bônus Twitch».
+- [Novo] Escolha fora do ar volta sozinha, com «Limpar fora do ar» no resumo.
+- [Novo] Ganho/h por canal, com «Medindo» nos primeiros 15 min.
+
+**Ajustes**
+- [Ajuste] Padrão de 4 lives por baía; configurável de 1 a 4.
+- [Ajuste] Log do resgate traz canal e stream, e registra confirmações e medições.
+
+**Correções**
+- [Correção] Clique que chega depois de troca de login é atribuído à conta que clicou.
+
+**Mudança de comportamento**
+- [Mudança] Clique sem confirmação vira trava por conta e tipo. Desligar o automático ou trocar de conta não solta a trava. Ela sai quando o bônus da conta sobe ou em 3 h.
+- [Mudança] Pontos e resgates são contados por live; a Mesa faz uma janela de resgate por tick no total.
+
+**Conhecidos**
+- Nada disso foi testado na Twitch real.
+- Limite de 2 streams não confirmado oficialmente; a medição por canal decide.
+- Consumo de 16 janelas não medido.
+
+## 2026-11-06 — Patch 0.3.4 «Vigília» · widget Capturas da Espera mostra shiny e normais
+
+> A Espera mostra quantas capturas a sessão já fez, em duas seções: Shiny e Normais. Cada uma tem total, hora da última captura e uma linha por baía. A contagem vem do evento de batalha do jogo e fica só em memória. O formato do evento ainda não foi conferido numa captura real.
+
+### Destaques do patch
+- **Duas seções:** Shiny e Normais, cada uma com total e última captura.
+- **Por baía:** uma linha por baía; baía fora da grade ou sem login mostra «–» e não entra no total.
+- **Só em memória:** a contagem zera ao fechar o app e não guarda espécie.
+
+### O que mudou
+- Espera: o widget Capturas deixa de ser um aviso fixo e passa a mostrar as duas seções, com total, «Última: HH:MM» ou «Nenhuma ainda», e uma linha por baía.
+- Layout: acima de 900px, com o widget em duas colunas (padrão), as seções ficam lado a lado; abaixo disso, empilhadas.
+- Nota «Nenhuma captura registrada nesta sessão.»: aparece só com total zero.
+- Contagem: o preload conta o evento `{ k: 'bola', sucesso: true, shiny }`; o app soma o delta de cada relatório cumulativo, e uma repetição não soma.
+- Validação: relatório com valor fora de 0 a 1e9 é descartado e não vira zero.
+
+### Por quê
+A entrega pediu ver capturas shiny e normais na Espera. O aviso fixo «Nenhuma captura registrada» não mostrava nada além disso. O código não registra motivo adicional.
+
+### Arquivos de produto
+- `dashboard/src/preload/hunt-page-state.js`: `applyBattle` conta o evento `bola`.
+- `dashboard/src/preload/hunt-page.js`: inclui `capturas` no resumo de caça.
+- `dashboard/src/preload/hunt-bridge.js`: `cleanCapturas` (cópia da validação, ver Problemas conhecidos).
+- `dashboard/src/shared/capture-tally.js`: `empty`, `apply`, `cleanCapturaReport` (delta por relatório cumulativo).
+- `dashboard/src/renderer/app.js`: evento `hunt` aplica `MesaCaptureTally.apply` em `live[i].capturas`.
+- `dashboard/src/renderer/standby.js`: `buildCapturesBody`, `paintStandbyCaptures`.
+- `dashboard/src/renderer/espera.css`: `.standby-caps`, duas colunas acima de 900px com span 2.
+- `dashboard/src/renderer/index.html`: carrega `capture-tally.js`.
+
+### Testes
+- `npm test` em `dashboard/`: **626** passaram, segundo o relato da entrega. Esta documentação não rodou a suíte.
+- Cobertos: `src/shared/capture-tally.test.js` (delta, repetição, recarga, relatório perdido, troca de nick, validação) e `src/preload/hunt-page.test.js` (evento `bola`, fingerprint).
+- Verificado no app isolado: duas colunas acima de 900px, empilhado em 800px e nota de zero.
+- Sem teste direto: `cleanCapturas` no `hunt-bridge.js` (depende de electron) e `paintStandbyCaptures`.
+
+### Não confirmado
+- **Formato do evento `bola`:** vem de `tools-analysis\pokeidle-manager` (terceiros). Não foi visto num frame real do jogo. Se o formato for outro, o widget fica em zero sem erro.
+- **Captura real no jogo:** não feita. A validação com captura real é do usuário.
+- **Nota sumindo com captura maior que zero:** não verificada no app.
+
+### Limites conhecidos
+- A contagem é só da sessão: fechar o app zera tudo.
+- Total e última hora somam só as baías na grade e com login.
+
+### Problemas conhecidos
+- **Validação pendente com captura real** no jogo.
+- **Validação duplicada:** `cleanCapturas` (`hunt-bridge.js`) e `cleanCapturaReport` (`capture-tally.js`) precisam ficar iguais. `cleanCapturas` existe porque o bridge é concatenado no game-preload; não tem teste direto.
+- `forgetBay` não zera o tally. Decisão de produto, a confirmar.
+- Possível recarga com crescimento acima do valor anterior: pode contar a mais.
+- Ordem state/hunt na troca de nick: não verificada.
+- A versão 0.3.4 foi escolhida pelo documentador. `dashboard/package.json` segue em 0.3.2 e não foi tocado; a versão é decisão do usuário.
+
+### Patch note
+
+**Patch 0.3.4 «Vigília» · 06/11/2026 · widget Capturas da Espera mostra shiny e normais**
+
+Resumo: a Espera mostra capturas shiny e normais da sessão, com total, última hora e uma linha por baía. A contagem vem do evento do jogo e ainda não foi conferida numa captura real.
+
+**Espera**
+- [Novo] Capturas em duas seções, Shiny e Normais. Antes: aviso fixo «Nenhuma captura registrada nesta sessão.». Depois: total, «Última: HH:MM» e uma linha por baía.
+- [Ajuste] Duas colunas acima de 900px; empilhadas até lá.
+- [Ajuste] A nota de zero aparece só sem nenhuma captura.
+
+**Capturas**
+- [Novo] Contagem da sessão a partir do evento de batalha do jogo. Só em memória: fechar o app zera.
+- [Ajuste] Baía fora da grade ou sem login mostra «–» e não entra no total.
+- [Correção] Relatório fora de 0 a 1 bilhão é descartado e não vira zero.
+
+**Conhecidos**
+- A captura real no jogo não foi feita. Se o formato do evento for outro, o widget fica em zero sem erro.
+- `forgetBay` não zera a contagem; recarga com crescimento acima do valor anterior pode contar a mais.
+
 ## 2026-11-06 — Patch «Vigília» · bônus Twitch resgata quando acaba, sem limiar de minutos
 
 > A Mesa deixa de esperar um limiar de 2, 5, 10 ou 15 minutos. Um tipo de bônus da Twitch é resgatado quando o prazo dele passa no relógio do servidor e o jogo mandou uma leitura válida. Sempre que um acaba, a Mesa resgata outro. Sem leitura do prazo, o resgate fica parado.
@@ -180,6 +860,80 @@ Resumo: o resgate acha o Redeem pelo texto quando o seletor dedicado não existe
 - Saldo igual ao custo trava em `redeem-varios`; saldo abreviado ou ilegível, em `redeem-lista`; «300 Redeem» ou texto extra, em `redeem-texto`.
 - Sair da baía antes do aviso de clique chegar é uma janela pequena sem trava.
 - Sem teste automatizado: a fiação do `aoClicar` no preload, a reavaliação síncrona e a exceção isolada na condição 3.
+
+## 2026-11-06 — Patch 0.3.3 «Vigília» · widgets modulares na tela Espera
+
+> A Espera vira um quadro de seis widgets: Capturas, Baía 1 a 4 e Recursos do app. Cada um pode ser reordenado, ter uma ou duas colunas, ser recolhido ou ocultado, e a ordem fica salva na configuração. A tela Automações não mudou.
+
+### Destaques do patch
+- **Quadro de widgets:** a grade 2×2 de fichas de baía vira um quadro com moldura comum em cada widget.
+- **Três formas de reordenar:** arrastar pela alça, Mover antes ou depois no menu, e Alt + seta para cima ou para baixo.
+- **Botão Widgets:** lista o que está oculto e restaura o padrão.
+
+### O que mudou
+- Espera: seis widgets, duas colunas acima de 900px e uma coluna até 900px. Capturas e Recursos do app ocupam a linha inteira por padrão; cada baía ocupa metade.
+- Widget: alça de arrastar, título, marcas de estado nas baías e menu de opções (Mover antes, Mover depois, Uma coluna, Duas colunas, Recolher ou Abrir, Ocultar).
+- Arrasto: placeholder no lugar de destino, os outros widgets deslizam em 240ms, Esc cancela.
+- Estado vazio: com todos os widgets ocultos, a tela mostra "Todos os widgets estão ocultos." e o botão "Mostrar todos".
+- Rodapé de texto da Espera continua fora do quadro e não virou widget.
+
+### Por quê
+O plano da entrega pede widgets modulares na Espera. O motivo de produto não está registrado no código.
+
+Antes, segundo `dashboard/docs/projeto.md` como estava antes desta entrega: Capturas acima da grade e grade 2×2 com quatro fichas de baía. O painel «Recursos do app» não aparecia descrito nesse documento, e não há histórico de commits para confirmar como era.
+
+### Arquivos de produto
+- `dashboard/src/shared/standby-layout.js`: ordem, largura, ocultos e recolhidos (`normalize`, `move`, `moveTo`, `set`, `reset`).
+- `dashboard/src/shared/catalog.js`: `standby` em `MESA_CATALOG.normalize`.
+- `dashboard/src/renderer/standby.js`: quadro, alça, arrasto, menus, botão Widgets, estado vazio, anúncios e leitura de processos.
+- `dashboard/src/renderer/espera.css`: quadro, moldura, menus, placeholder e reduced-motion.
+- `dashboard/src/renderer/index.html`: carrega `standby-layout.js` antes de `standby.js`.
+
+Esta lista vem do código atual. Como o repositório não tem commits, não há diff para confirmar o que mudou em cada arquivo.
+
+### Testes
+- `npm test` em `dashboard/`: **562** passaram, 0 falharam, segundo a entrega. Esta documentação não rodou a suíte.
+- `src/shared/standby-layout.test.js` cobre ordem, largura, ocultos, recolhidos e normalização. `src/shared/catalog.test.js` cobre o `standby` da configuração.
+- `standby.js` não tem suíte própria: arrasto, menus, FLIP e anúncios não têm teste automatizado.
+
+### Não confirmado
+- **Verificação em tela:** arrasto, persistência depois de reiniciar, Esc, Alt + seta e reduced-motion não foram vistos no app. Só os testes automatizados rodaram.
+- **Estado anterior de «Recursos do app»:** não confirmado.
+
+### Problemas conhecidos
+- Alt + seta move só para cima e para baixo. Alt + esquerda e Alt + direita não fazem nada.
+- Falta a verificação em tela listada acima antes de considerar a entrega fechada.
+
+### Patch note
+
+**Patch 0.3.3 «Vigília» · 06/11/2026 · widgets modulares na tela Espera**
+
+Resumo: a Espera vira um quadro de seis widgets, com ordem, largura, recolhido e oculto salvos. Dá para reordenar pelo arrasto, pelo menu ou com Alt + seta, e o botão Widgets devolve o que estiver oculto.
+
+**Espera**
+- [Novo] Quadro de widgets no lugar da grade 2×2. Antes: Capturas acima e quatro fichas de baía fixas. Depois: Capturas, Baía 1 a 4 e Recursos do app na mesma grade.
+- [Ajuste] Duas colunas acima de 900px; uma coluna até 900px. Capturas e Recursos do app ocupam a linha inteira por padrão.
+- [Ajuste] O rodapé de texto continua fora do quadro.
+
+**Widgets**
+- [Novo] Moldura comum: alça de arrastar, título, marcas de estado nas baías e botão de opções.
+- [Novo] Arrastar pela alça, com placeholder e deslize de 240ms. Esc cancela.
+- [Novo] Menu: Mover antes, Mover depois, Uma coluna, Duas colunas, Recolher ou Abrir, Ocultar.
+- [Novo] Alt + seta para cima ou para baixo, com a alça focada.
+- [Novo] Botão Widgets: mostra cada oculto e restaura o padrão.
+- [Novo] Estado vazio com "Mostrar todos".
+- [Novo] Estado salvo em `cfg.standby`, a cada ação.
+- [Novo] Anúncio em região de status: "Baía 2 movida para a posição 3."
+
+**Correções e qualidade de vida**
+- [Ajuste] A leitura de processos para quando o widget Recursos do app está oculto ou recolhido. Há um só intervalo, sem duplicar.
+- [Ajuste] Os movimentos pulam widgets ocultos.
+- [Ajuste] Com redução de movimento, não há deslize, o arrasto não escala e as transições dos widgets são zeradas.
+- [Ajuste] As baías da tela Automações não mudaram.
+
+**Problemas conhecidos**
+- A verificação em tela não foi feita: arrasto, persistência após reinício, Esc, Alt + seta e redução de movimento. Só os testes automatizados rodaram.
+- Alt + seta move só para cima e para baixo.
 
 ## 2026-11-06 — Patch «Vigília» · item por botão real e guarda antes de cada clique no resgate da Twitch
 

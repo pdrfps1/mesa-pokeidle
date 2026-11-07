@@ -31,6 +31,10 @@ function createHuntReader() {
     trocaHuntLivreEm: null,
     waveClear: false,
     safariDentro: false,
+    capturas: { normal: 0, shiny: 0 },
+    // Mais forte capturado nesta página: o Pokémon novo que aparece depois de um resgate bem-sucedido.
+    melhorCaptura: null,
+    capturaPendente: false,
     _spawnOndaAtual: false,
   };
 
@@ -70,6 +74,7 @@ function createHuntReader() {
     if (!raw || typeof raw !== 'object' || !Number.isInteger(raw.id)) return null;
     return {
       id: raw.id,
+      nome: nameOf(raw.nome),
       level: Number.isInteger(raw.level) ? raw.level : null,
       quality: typeof raw.quality === 'number' && Number.isFinite(raw.quality) ? raw.quality : null,
       potency: Number.isInteger(raw.potencia) ? raw.potencia : null,
@@ -79,6 +84,18 @@ function createHuntReader() {
     };
   }
 
+  function ivSumOf(pokemon) {
+    if (!pokemon.ivs || !IVS.every((key) => Number.isInteger(pokemon.ivs[key]))) return null;
+    return IVS.reduce((sum, key) => sum + pokemon.ivs[key], 0);
+  }
+
+  // Mais forte: maior nível; empate vai para a maior soma de IVs.
+  function strongerThan(a, b) {
+    if (!b) return true;
+    if (a.level !== b.level) return a.level > b.level;
+    return (a.ivSum ?? -1) > (b.ivSum ?? -1);
+  }
+
   function replacePokemons(list) {
     const next = new Map();
     for (const raw of list) {
@@ -86,6 +103,22 @@ function createHuntReader() {
       if (!pokemon) continue;
       next.set(pokemon.id, pokemon);
       if (next.size >= 800) break;
+    }
+    if (state.capturaPendente) {
+      state.capturaPendente = false;
+      let novo = null;
+      for (const pokemon of next.values()) {
+        if (state.pokemons.has(pokemon.id) || pokemon.level == null) continue;
+        const candidate = {
+          nome: pokemon.nome,
+          speciesId: pokemon.speciesId,
+          level: pokemon.level,
+          shiny: pokemon.shiny,
+          ivSum: ivSumOf(pokemon),
+        };
+        if (strongerThan(candidate, novo)) novo = candidate;
+      }
+      if (novo && strongerThan(novo, state.melhorCaptura)) state.melhorCaptura = novo;
     }
     state.pokemons = next;
   }
@@ -192,6 +225,7 @@ function createHuntReader() {
     if (initializeHunt) {
       state.twitchPctBase = 0;
       state.twitchXpAte = 0;
+      state.capturaPendente = false;
     }
     if (Object.prototype.hasOwnProperty.call(estado, 'twitch')) {
       if (estado.twitch && typeof estado.twitch === 'object') applyTwitch(estado.twitch);
@@ -225,6 +259,12 @@ function createHuntReader() {
     for (const event of events) {
       if (!event || typeof event !== 'object') continue;
       switchGate.applyEvent(event, slugOf);
+      // Evento de batalha de captura: o formato vem de fonte de terceiros, então só conta o que está claro.
+      if (event.k === 'bola' && event.sucesso === true && typeof event.shiny === 'boolean') {
+        if (event.shiny) state.capturas.shiny += 1;
+        else state.capturas.normal += 1;
+        state.capturaPendente = true;
+      }
       if (event.k === 'hunt') {
         const slug = slugOf(event.slug);
         if (!slug) continue;
