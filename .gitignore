@@ -2,3 +2,5 @@ node_modules/
 dist/
 dist-release/
 .taste-skill/
+dist-nova/
+release-build/

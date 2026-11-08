@@ -1,4 +1,4 @@
-﻿# Instala o que a Mesa precisa e abre o aplicativo.
+﻿# Instala o que o PokeIdle Automation precisa e abre o aplicativo.
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
@@ -20,7 +20,7 @@ function Find-Node {
   return $null
 }
 
-Write-Host 'Mesa: preparando este computador...'
+Write-Host 'PokeIdle Automation: preparando este computador...'
 
 if (-not (Find-Node)) {
   $winget = Get-Command winget -ErrorAction SilentlyContinue
@@ -39,10 +39,10 @@ if (-not (Find-Node)) {
 
 Remove-Item Env:NODE_ENV -ErrorAction SilentlyContinue
 Write-Host "Node.js: $(& node --version)"
-Write-Host 'Instalando as dependências da Mesa...'
+Write-Host 'Instalando as dependências do PokeIdle Automation...'
 & npm.cmd install --include=dev
 if ($LASTEXITCODE -ne 0) { throw 'npm install falhou.' }
 
-Write-Host 'Abrindo a Mesa...'
+Write-Host 'Abrindo o PokeIdle Automation...'
 & npm.cmd start
-if ($LASTEXITCODE -ne 0) { throw 'A Mesa não abriu.' }
+if ($LASTEXITCODE -ne 0) { throw 'O PokeIdle Automation não abriu.' }

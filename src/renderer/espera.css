@@ -1,0 +1,518 @@
+/* Tela Espera: um quadro de widgets (capturas, quatro baías, recursos do app). */
+
+.view.standby {
+  overflow: hidden;
+  gap: var(--gap);
+  min-height: 0;
+}
+
+/* Barra acima do quadro: só o botão Widgets. */
+.standby-toolbar {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+}
+.standby-widgets-btn { box-shadow: none !important; }
+
+/* Quadro: grade de 2 colunas. Quem ocupa duas colunas usa data-span="2". */
+.standby-board {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--gap);
+  overflow: auto;
+  align-content: start;
+  align-items: start;
+}
+.standby-board > .standby-widget[data-span="2"],
+.standby-board > .standby-placeholder[data-span="2"] {
+  grid-column: 1 / -1;
+}
+
+/* Widget: a mesma superfície de .mesa-panel (raio 12px, sombra 1). */
+.standby-widget {
+  --lamp: var(--lamp-off);
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  border-radius: 12px;
+  transition: box-shadow 160ms ease;
+}
+.standby-widget[hidden] { display: none !important; }
+.standby-widget[data-tone="live"] { --lamp: var(--lamp-live); }
+.standby-widget[data-tone="wait"] { --lamp: var(--lamp-wait); }
+.standby-widget[data-tone="bad"] { --lamp: var(--lamp-bad); }
+
+/* Pego: sai do fluxo e segue o ponteiro. */
+.standby-widget.is-dragging {
+  position: fixed;
+  z-index: 40;
+  margin: 0;
+  pointer-events: none;
+  box-shadow: var(--shadow-2) !important;
+  transition: none;
+}
+
+.standby-placeholder {
+  min-width: 0;
+  border: 1px solid var(--color-base-300);
+  border-radius: 12px;
+  background: transparent;
+}
+
+.standby-widget-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 8px 0 6px;
+}
+.standby-widget-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.standby-widget-marks {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Alça e menu: aparecem no hover e no foco; em tela de toque, sempre. */
+.standby-widget-grip,
+.standby-widget-menu {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  opacity: 0;
+  transition: opacity 160ms ease;
+}
+.standby-widget-grip { cursor: grab; touch-action: none; }
+.standby-widget-grip:active { cursor: grabbing; }
+.standby-widget:hover .standby-widget-grip,
+.standby-widget:hover .standby-widget-menu,
+.standby-widget:focus-within .standby-widget-grip,
+.standby-widget:focus-within .standby-widget-menu,
+.standby-widget-menu[aria-expanded="true"] {
+  opacity: 1;
+}
+@media (hover: none) {
+  .standby-widget-grip,
+  .standby-widget-menu { opacity: 1; }
+}
+.standby-widget-grip:focus-visible,
+.standby-widget-menu:focus-visible,
+.standby-widgets-btn:focus-visible,
+.standby-menu-item:focus-visible,
+.standby-empty .btn:focus-visible,
+.standby-procs-sort:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Corpo: some quando o widget está recolhido. */
+.standby-widget-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 0 16px 16px;
+}
+.standby-widget.is-collapsed > .standby-widget-body { display: none; }
+
+/* Menus: um painel com itens. Fica acima do conteúdo do widget. */
+.standby-menu-wrap {
+  position: relative;
+  flex: none;
+  display: inline-flex;
+}
+.standby-menu-panel {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 30;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 12px;
+  box-shadow: var(--shadow-2);
+}
+.standby-menu-panel[hidden] { display: none !important; }
+.standby-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-label);
+  text-align: start;
+  cursor: pointer;
+}
+.standby-menu-item:hover:not(:disabled),
+.standby-menu-item:focus-visible { background: var(--raised); }
+.standby-menu-item:disabled { color: var(--text-3); cursor: default; }
+.standby-menu-item[role="menuitemradio"]::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  box-shadow: inset 0 0 0 1px var(--text-2);
+}
+.standby-menu-item[role="menuitemradio"][aria-checked="true"]::before {
+  background: var(--color-accent);
+  box-shadow: none;
+}
+.standby-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--rule);
+}
+
+/* Estado da baía no cabeçalho. */
+.standby-name::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--lamp);
+}
+.standby-widget-title.standby-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.standby-widget[data-tone="wait"] .standby-name::before { background: transparent; box-shadow: inset 0 0 0 2px var(--lamp-wait); }
+.standby-widget[data-tone="off"] .standby-name::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--lamp-off); }
+.standby-vip,
+.standby-status {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  height: auto !important;
+}
+.standby-status { color: var(--text-2) !important; font-size: var(--fs-label); font-weight: 400; }
+.standby-widget[data-tone="bad"] .standby-status { color: var(--lamp-bad) !important; font-weight: 600; }
+.standby-vip { color: var(--text-3) !important; font-size: var(--fs-caption); font-weight: 600; letter-spacing: 0.02em; }
+.standby-vip[hidden] { display: none !important; }
+
+.standby-body {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 24px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+.standby-left {
+  flex: 0 0 32%;
+  max-width: 32%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 12px;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.standby-right {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 0;
+  overflow: hidden;
+}
+.standby-facts { display: flex; flex-direction: column; gap: 12px; flex: 0 1 auto; min-height: 0; }
+.standby-fact span {
+  display: flex;
+  align-items: center;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+.standby-fact .fact-icon { display: none; }
+.standby-fact b {
+  display: block;
+  margin-top: 2px;
+  font-family: var(--font);
+  font-size: var(--fs-name);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.standby-fact-metric b { font-family: var(--font-display); font-size: var(--fs-metric); line-height: 1.2; }
+.standby-open {
+  width: 100%;
+  margin-top: auto;
+  flex: none;
+  box-shadow: none !important;
+}
+.standby-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px 16px;
+  flex: none;
+}
+.standby-updated {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  flex: none;
+}
+.standby-updated b { color: var(--text); font-weight: 600; }
+
+/* Gráfico: uma linha no acento, a mesma em qualquer estado; a área só aparece com pontos reais. */
+.standby-chart {
+  position: relative;
+  flex: 0 0 130px;
+  width: 100%;
+  height: 130px;
+  max-height: 130px;
+  min-height: 130px;
+  display: block;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  isolation: isolate;
+  color: var(--color-accent);
+}
+.standby-chart-svg {
+  width: 100%;
+  height: 100%;
+  max-height: 130px;
+  min-height: 0;
+  flex: none;
+  display: block;
+  vertical-align: top;
+}
+.standby-chart-svg[hidden] { display: none !important; }
+/* O SVG (viewBox 260×140) encolhe ~7% na altura de 130px: 13 unidades dão ~12px na tela. */
+.standby-chart-axis { fill: var(--text-2); font-size: 13px; font-family: var(--font); }
+.standby-chart-empty {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  pointer-events: none;
+}
+.standby-chart-empty[hidden] { display: none !important; }
+
+.standby-note {
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  margin: 0;
+  flex: none;
+  padding: 0;
+  border: 0;
+}
+.standby-note[hidden] { display: none !important; }
+
+/* Capturas: duas seções (Shiny e Normais). Uma coluna; em span 2 acima de 900px, duas colunas. */
+.standby-caps { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.standby-cap { min-width: 0; }
+.standby-cap-head { display: flex; align-items: center; gap: 6px; color: var(--text-2); font-size: var(--fs-label); }
+.standby-cap-icon { display: inline-flex; color: var(--accent); }
+.standby-cap-icon svg { width: 14px; height: 14px; }
+.standby-cap-total {
+  display: block;
+  margin-top: 4px;
+  font-family: var(--font-display);
+  font-size: var(--fs-metric);
+  font-weight: 600;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+}
+.standby-cap[data-kind="shiny"] .standby-cap-total { color: var(--accent); }
+.standby-cap-last { margin: 2px 0 0; color: var(--text-2); font-size: var(--fs-label); font-variant-numeric: tabular-nums; }
+.standby-cap-bays {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  font-variant-numeric: tabular-nums;
+}
+.standby-cap-best { margin: 10px 0 0; color: var(--text); font-size: var(--fs-label); font-weight: 600; }
+.standby-cap-best[hidden] { display: none !important; }
+.standby-cap-note { margin: 10px 0 0; color: var(--text-2); font-size: var(--fs-label); }
+.standby-cap-note[hidden] { display: none !important; }
+@media (min-width: 901px) {
+  .standby-widget[data-widget="captures"][data-span="2"] .standby-caps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Vazio: todos ocultos. */
+.standby-empty {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+.standby-empty[hidden] { display: none !important; }
+.standby-empty-text { margin: 0; }
+
+/* Região de status: lida por leitor de tela, invisível na tela. */
+.standby-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.standby-foot {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 16px;
+  padding: 0;
+}
+.standby-lead,
+.standby-foot-note { margin: 0; color: var(--text-2); font-size: var(--fs-label); }
+
+/* Até 900px, uma coluna e span vale 1: o gráfico e o eixo mantêm o tamanho legível. */
+@media (max-width: 900px) {
+  .standby-board { grid-template-columns: minmax(0, 1fr); }
+  .standby-board > .standby-widget[data-span="2"],
+  .standby-board > .standby-placeholder[data-span="2"] { grid-column: auto; }
+}
+@media (max-width: 700px) {
+  .standby-body { flex-direction: column; }
+  .standby-left { flex: none; max-width: none; }
+}
+
+/* Recursos do app: tabela de processos com a mesma linguagem da Espera. */
+.standby-procs-totals {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 16px;
+  margin: 0;
+}
+.standby-procs-totals[hidden] { display: none !important; }
+.standby-procs-totals dt { color: var(--text-2); font-size: var(--fs-label); }
+.standby-procs-totals dd { margin: 0; font-variant-numeric: tabular-nums; }
+.standby-procs-empty { margin: 0; color: var(--text-2); font-size: var(--fs-label); }
+.standby-procs-empty[hidden] { display: none !important; }
+.standby-procs-value b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.standby-procs-of { margin-left: 6px; color: var(--text-2); font-size: var(--fs-label); }
+.standby-procs-scroll { overflow-x: auto; }
+.standby-procs-scroll[hidden] { display: none !important; }
+.standby-procs-table { width: 100%; }
+.standby-procs-table .num {
+  text-align: right;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.standby-procs-sort {
+  appearance: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+.standby-procs-sort:hover,
+th[aria-sort="ascending"] .standby-procs-sort,
+th[aria-sort="descending"] .standby-procs-sort { color: var(--color-accent); }
+.standby-procs-arrow { display: inline-block; min-width: 1em; margin-left: 4px; color: var(--color-accent); }
+.standby-procs-note { margin: 0; color: var(--text-2); font-size: 12px; }
+
+@media (max-width: 700px) {
+  .standby-procs-totals { grid-template-columns: minmax(0, 1fr); }
+  .standby-procs-type { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .standby-widget,
+  .standby-widget-grip,
+  .standby-widget-menu,
+  .standby-procs-sort { transition: none !important; }
+}
+
+/* Bônus Twitch na Espera: o bloco de live-bonus.css dentro da moldura. Tudo escopado em .standby-widget. */
+.standby-widget .live-bonus-geral {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.standby-widget .live-bonus-geral .settings-field { padding: 0; }
+.standby-widget .live-bonus-bays { margin: 0; }
+/* A moldura já dá o nome da baía: o li perde a borda e o padding, e o nome da baía some. */
+.standby-widget .live-bonus-bay { padding: 0; border: 0; }
+.standby-widget .live-bonus-bay-name { display: none; }
+/* Área de lives rola na horizontal dentro do widget; a página não ganha rolagem. A folga de 4px deixa o contorno de foco aparecer. */
+.standby-widget .live-bonus-live-box {
+  overflow-x: auto;
+  padding: 4px;
+  margin-inline: -4px;
+}
+/* Lista de canais oficiais com altura máxima e rolagem própria. */
+.standby-widget .live-bonus-oficiais {
+  max-height: 240px;
+  overflow: auto;
+  padding: 4px;
+  margin-inline: -4px;
+}

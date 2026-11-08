@@ -33,3 +33,36 @@ describe('game-browser-login', () => {
     assert.match(IMPORT_HINT.failed, /Já entrei/);
   });
 });
+
+describe('game-browser-login reexporta o módulo de perfil', () => {
+  it('loginProfileDir e isLoginBrowserRunning são as mesmas funções de profile-login', () => {
+    const perfil = require('./browser/profile-login');
+    const jogo = require('./game-browser-login');
+    assert.equal(jogo.loginProfileDir, perfil.loginProfileDir);
+    assert.equal(jogo.isLoginBrowserRunning, perfil.isLoginBrowserRunning);
+    assert.equal(jogo.clearLoginProfile, perfil.clearLoginProfile);
+  });
+});
+
+describe('openLoginBrowser do jogo: segunda abertura durante a primeira (A-6, S1)', () => {
+  it('a chamada de dentro devolve ok sem onOpened; o onOpened de fora roda uma vez', () => {
+    const { openLoginBrowser } = require('./game-browser-login');
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-game-open-'));
+    const deps = {
+      catalog: { partitions: ['persist:mesa-1'] },
+      userData: () => root,
+      browserExe: 'x',
+      spawn: () => {
+        dentro = openLoginBrowser(deps, 0, () => chamados.push('dentro'));
+        return { unref() {} };
+      },
+    };
+    const chamados = [];
+    let dentro = null;
+    const fora = openLoginBrowser(deps, 0, () => chamados.push('fora'));
+    assert.deepEqual(dentro, { ok: true });
+    assert.deepEqual(fora, { ok: true });
+    assert.deepEqual(chamados, ['fora']);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+});

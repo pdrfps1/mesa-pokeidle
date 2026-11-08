@@ -2,7 +2,7 @@ const FRAME_GAP_MS = 100;
 
 function economyOn() {
   const root = document.documentElement;
-  return !!(root && root.classList.contains('modo-economia'));
+  return !!(root && (root.classList.contains('modo-economia') || root.classList.contains('modo-ultra')));
 }
 
 function semCenaOn() {
@@ -65,8 +65,8 @@ let pendingReport = null;
 const liveQueue = [];
 let generation = Date.now();
 
-function emitLiveFromEstado(estado) {
-  const patch = livePatchFromEstado(estado);
+function emitLiveFromEstado(estado, completo) {
+  const patch = livePatchFromEstado(estado, completo);
   if (!patch) return;
   const api = window.__mesaHunt;
   if (api && typeof api.live === 'function') {
@@ -87,6 +87,12 @@ function bump() {
   generation = Math.max(Date.now(), generation + 1);
 }
 
+function capturasOf() {
+  const capturas = { normal: state.capturas.normal, shiny: state.capturas.shiny };
+  if (state.melhorCaptura) capturas.melhor = Object.assign({}, state.melhorCaptura);
+  return capturas;
+}
+
 function build(includeHunts) {
   const summary = {
     generation,
@@ -101,7 +107,7 @@ function build(includeHunts) {
     xpBonus: {
       guildRankPct: state.guildRankPct,
       guildBoostActive: state.guildBoostUntil != null && state.servidorAgora != null && state.guildBoostUntil > state.servidorAgora,
-      twitchPct: state.twitchPct,
+      twitchPct: reader.twitchPctNow(),
       eventTrainerPct: state.eventTrainerPct,
       eventPokemonPct: state.eventPokemonPct,
     },
@@ -115,6 +121,7 @@ function build(includeHunts) {
     waveClear: state.waveClear === true,
     semCena: semCenaOn(),
     safariDentro: state.safariDentro === true,
+    capturas: capturasOf(),
   };
   if (includeHunts) summary.hunts = state.hunts;
   return summary;
@@ -126,7 +133,7 @@ function fingerprint(summary) {
     summary.noCentro, summary.centroLivreEm, summary.serverOffsetMs, summary.vip, summary.xpBonus,
     summary.active, summary.catalogRev, summary.huntEventSeq, summary.huntEventSlug,
     summary.ondaSeq, summary.combateOndaSeq, summary.trocaHuntLivreEm, summary.waveClear,
-    summary.semCena, summary.safariDentro,
+    summary.semCena, summary.safariDentro, summary.capturas,
   ]);
 }
 
@@ -183,14 +190,14 @@ function arm(ws) {
       reader.applyEstado(frame.estado, true);
       reader.takeHunts(frame.hunts);
       if (state.huntSlug && !state.huntName) state.huntName = reader.nameFor(state.huntSlug);
-      emitLiveFromEstado(frame.estado);
+      emitLiveFromEstado(frame.estado, true);
       publish();
       return;
     }
     if (ws !== confirmed) return;
     if (frame.t === 'estado') {
       reader.applyEstado(frame.estado, false);
-      emitLiveFromEstado(frame.estado);
+      emitLiveFromEstado(frame.estado, false);
     } else if (frame.t === 'batalha') reader.applyBattle(frame);
     else return;
     publish();

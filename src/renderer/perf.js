@@ -35,26 +35,26 @@ function fillPerfTable(table, report) {
 
 function mountPerf(parent) {
   if (!window.mesa || typeof window.mesa.perfReport !== 'function') return;
+  const section = el('article', 'settings-wide card card-border mesa-panel perf-report');
+  const text = el('div', 'min-w-0 flex-1');
+  const table = document.createElement('table');
+  table.className = 'table table-sm perf-table w-full';
+  const actions = el('div', 'perf-actions');
+  const reset = el('button', 'btn btn-sm btn-soft', 'Zerar');
+  const copy = el('button', 'btn btn-sm btn-ghost', 'Copiar');
+  reset.type = 'button';
+  copy.type = 'button';
+  actions.append(reset, copy);
+  text.append(
+    el('h2', 'settings-card-title', 'Processamento e Hardware'),
+    el('p', 'settings-perf-lead', 'Mede mesa, GPU e cada baía. Deixe ~20 s em cada situação.'),
+    table,
+  );
+  section.append(text, actions);
+  parent.append(section);
+  fillPerfTable(table, { rows: [] });
   window.mesa.perfReport().then((report) => {
     if (!report) return;
-    const section = el('div', 'setting perf-report');
-    const text = el('div');
-    const table = document.createElement('table');
-    table.className = 'perf-table';
-    const actions = el('div', 'perf-actions');
-    const reset = el('button', 'text-btn', 'Zerar');
-    const copy = el('button', 'text-btn', 'Copiar');
-    reset.type = 'button';
-    copy.type = 'button';
-    actions.append(reset, copy);
-    text.append(
-      el('strong', null, 'Processamento'),
-      el('p', null, 'Mede mesa, GPU e cada baía enquanto você usa o app. Deixe estável por uns 20 segundos: sem baía, uma baía, quatro baías, janela minimizada e Ajustes.'),
-      el('p', null, report.unit),
-      table,
-    );
-    section.append(text, actions);
-    parent.append(section);
 
     function show(next) {
       if (!next) return;

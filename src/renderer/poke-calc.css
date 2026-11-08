@@ -1,0 +1,328 @@
+/* Calculadora de status (Espera). Tudo sob .poke-calc; só tokens do app. */
+
+.poke-calc {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-label);
+  color: var(--text);
+  accent-color: var(--color-accent);
+}
+
+.poke-calc[hidden] { display: none !important; }
+
+.poke-calc-label {
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+
+/* Busca */
+.poke-calc-search {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  min-width: 0;
+}
+
+.poke-calc-search-row {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.poke-calc-input,
+.poke-calc-num {
+  box-sizing: border-box;
+  min-width: 0;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius-control);
+  background: var(--color-base-100);
+  color: var(--text);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.poke-calc-input { flex: 1 1 auto; }
+.poke-calc-num { width: 100%; }
+
+.poke-calc-btn {
+  flex: none;
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius-control);
+  background: var(--color-base-200);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  transition: background-color 150ms, color 150ms;
+}
+
+.poke-calc-btn:hover:not(:disabled) { background: var(--color-base-100); }
+.poke-calc-btn:disabled { opacity: 0.6; cursor: default; }
+
+.poke-calc-input:focus-visible,
+.poke-calc-num:focus-visible,
+.poke-calc-btn:focus-visible,
+.poke-calc-range:focus-visible,
+.poke-calc-tier:focus-within,
+.poke-calc-switch:focus-within {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.poke-calc-status {
+  margin: 0;
+  min-height: 1.2em;
+  font-size: var(--fs-label);
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* Resultado */
+.poke-calc-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.poke-calc-result[hidden] { display: none !important; }
+
+.poke-calc-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.poke-calc-sprite {
+  flex: none;
+  box-sizing: border-box;
+  width: 96px;
+  height: 96px;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius-control);
+  background: var(--color-base-100);
+  overflow: hidden;
+}
+
+.poke-calc-img {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+}
+
+.poke-calc-img[data-sprite="pixel"] {
+  image-rendering: pixelated;
+}
+
+.poke-calc-img[hidden],
+.poke-calc-noimg[hidden] { display: none !important; }
+
+.poke-calc-noimg {
+  padding: 4px;
+  font-size: var(--fs-caption);
+  color: var(--text-3);
+  text-align: center;
+}
+
+.poke-calc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.poke-calc-name {
+  margin: 0;
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.poke-calc-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.poke-calc-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 6px;
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+
+/* Controles */
+.poke-calc-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.poke-calc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.poke-calc-range-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.poke-calc-range {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.poke-calc-out {
+  flex: none;
+  min-width: 48px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.poke-calc-tiers {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+
+.poke-calc-tiers legend { padding: 0 0 6px; }
+
+.poke-calc-tier-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.poke-calc-tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border: 1px solid var(--rule-soft);
+  border-radius: var(--radius-control);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: border-color 150ms, color 150ms;
+}
+
+.poke-calc-tier:has(input:checked) {
+  border-color: var(--color-accent);
+  color: var(--text);
+}
+
+.poke-calc-tier input { margin: 0; }
+
+.poke-calc-mult {
+  font-size: var(--fs-caption);
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.poke-calc-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.poke-calc-switch input { margin: 0; }
+
+.poke-calc-switch-estado {
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+
+/* Tabela de stats */
+.poke-calc-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.poke-calc-table th,
+.poke-calc-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--rule-soft);
+  text-align: left;
+  font-weight: 400;
+}
+
+.poke-calc-table thead th {
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+}
+
+.poke-calc-table .num { text-align: right; }
+
+.poke-calc-table .poke-calc-stat { color: var(--text-2); }
+
+.poke-calc-final {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.poke-calc-cd,
+.poke-calc-floor,
+.poke-calc-adjust,
+.poke-calc-note {
+  margin: 0;
+  font-size: var(--fs-label);
+  overflow-wrap: anywhere;
+}
+
+.poke-calc-cd {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.poke-calc-floor,
+.poke-calc-adjust,
+.poke-calc-note { color: var(--text-2); }
+
+.poke-calc-floor[hidden],
+.poke-calc-adjust[hidden] { display: none !important; }
+
+.poke-calc-note { font-size: var(--fs-caption); color: var(--text-3); }
+
+/* Largura estreita: uma coluna, sem rolagem horizontal. */
+@media (max-width: 420px) {
+  .poke-calc-head {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .poke-calc * {
+    transition: none !important;
+  }
+}

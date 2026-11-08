@@ -1,38 +1,85 @@
 {
   "name": "mesa-pokeidle",
-  "productName": "Mesa",
-  "version": "0.3.2",
+  "productName": "PokeIdle Automation",
+  "version": "0.4.0",
   "private": true,
-  "description": "Mesa local com quatro baías do Pokeidle.",
+  "description": "Mesa local do PokeIdle Automation com quatro baías.",
   "license": "MIT",
   "main": "src/main/index.js",
   "scripts": {
+    "build:css": "tailwindcss -i src/renderer/theme.css -o src/renderer/theme.generated.css",
+    "build:ui-js": "node scripts/build-ui-js.js",
+    "build:ui-css": "tailwindcss -i ui/styles/mesa-boardui.css -o src/renderer/boardui.generated.css",
+    "build:ui": "npm run build:ui-js && npm run build:ui-css",
+    "prestart": "npm run build:css && npm run build:ui",
+    "predist": "npm run build:css && npm run build:ui",
     "start": "node ./node_modules/electron/cli.js . --disable-blink-features=DocumentPictureInPictureAPI,WebAuthentication",
-    "test": "node --test src/main/live/channels.test.js src/main/live/irc.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/pokeidle-session.test.js src/renderer/hunt-rank.test.js",
-    "dist": "node ./scripts/dist-portable.js"
+    "test": "node --test src/main/twitch/points.test.js src/main/twitch/controller.test.js src/main/twitch/browser-login.test.js src/main/twitch/windows.test.js src/main/browser/profile-login.test.js src/main/bundles.test.js src/main/game-browser-login.test.js src/main/updater.test.js src/shared/catalog.test.js src/shared/live-catalog.test.js src/shared/twitch-dom.test.js src/shared/pokeidle-session.test.js src/shared/xp-history.test.js src/shared/process-table.test.js src/shared/standby-layout.test.js src/shared/capture-tally.test.js src/shared/poke-stats.test.js src/shared/poke-api.test.js src/preload/hunt-page.test.js src/preload/twitch-page.test.js src/renderer/hunt-rank.test.js src/renderer/bay-audio.test.js src/renderer/live-bonus.test.js ui/theme-sync.test.js src/shared/board-layout.test.js src/shared/brand.test.js scripts/dist.test.js",
+    "dist": "node ./scripts/dist.js"
   },
   "dependencies": {
-    "electron": "^44.5.1",
-    "selfsigned": "^2.4.1"
+    "electron": "^44.5.1"
   },
   "devDependencies": {
-    "electron-builder": "^26.0.12"
+    "@remixicon/react": "^4.9.0",
+    "@tailwindcss/cli": "^4.3.3",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "daisyui": "^5.7.50",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.25.12",
+    "motion": "^12.42.2",
+    "react": "^19.3.1",
+    "react-aria-components": "^1.22.1",
+    "react-dom": "^19.3.1",
+    "tailwind-merge": "^3.7.0",
+    "tailwindcss": "^4.3.3"
   },
   "build": {
+    "productName": "PokeIdle Automation",
+    "executableName": "PokeIdle-Automation",
     "appId": "local.mesa.pokeidle",
-    "productName": "Mesa",
-    "executableName": "Mesa",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
     "asar": true,
     "files": [
       "src/**/*",
       "package.json"
     ],
     "win": {
-      "target": "portable",
-      "signAndEditExecutable": false
+      "target": [
+        "nsis",
+        "portable"
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": true
     },
     "portable": {
-      "artifactName": "Mesa.exe"
+      "artifactName": "PokeIdle-Automation.exe"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "PokeIdle Automation",
+      "uninstallDisplayName": "PokeIdle Automation",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "installerSidebar": "build/installerSidebar.bmp",
+      "uninstallerSidebar": "build/uninstallerSidebar.bmp",
+      "installerHeader": "build/installerHeader.bmp",
+      "installerLanguages": [
+        "pt_BR"
+      ],
+      "language": "1046",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "PokeIdle-Automation-Setup.exe"
     }
   }
 }

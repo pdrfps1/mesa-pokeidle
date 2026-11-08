@@ -16,13 +16,9 @@ function sizeBayFrame(index) {
   const stage = ui.bays && ui.bays[index] && ui.bays[index].stage;
   const webview = webviews[index];
   if (!stage || !webview) return;
-  const width = Math.round(stage.clientWidth);
-  const height = Math.round(stage.clientHeight);
-  if (width < 8 || height < 8) return;
-  const box = `${width}px`;
-  const tall = `${height}px`;
-  if (webview.style.width !== box) webview.style.width = box;
-  if (webview.style.height !== tall) webview.style.height = tall;
+  if (stage.clientWidth < 8 || stage.clientHeight < 8) return;
+  if (webview.style.width !== '100%') webview.style.width = '100%';
+  if (webview.style.height !== '100%') webview.style.height = '100%';
 }
 
 function applyBayZoom(index, force) {
@@ -55,9 +51,10 @@ function paintZoom() {
   else ui.scalePct.textContent = 'Automático';
   if (ui.scaleAuto) {
     const auto = fixed == null;
-    ui.scaleAuto.classList.toggle('is-on', auto);
+    ui.scaleAuto.classList.toggle('btn-active', auto);
     ui.scaleAuto.setAttribute('aria-pressed', auto ? 'true' : 'false');
   }
+  syncRangeFill(ui.scale);
 }
 
 function watchBayFrames() {

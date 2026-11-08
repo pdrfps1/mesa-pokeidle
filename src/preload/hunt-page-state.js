@@ -17,7 +17,8 @@ function createHuntReader() {
     eventPokemonPct: 0,
     guildRankPct: 0,
     guildBoostUntil: null,
-    twitchPct: 0,
+    twitchPctBase: 0,
+    twitchXpAte: 0,
     activeId: null,
     pokemons: new Map(),
     hunts: [],
@@ -30,6 +31,10 @@ function createHuntReader() {
     trocaHuntLivreEm: null,
     waveClear: false,
     safariDentro: false,
+    capturas: { normal: 0, shiny: 0 },
+    // Mais forte capturado nesta página: o Pokémon novo que aparece depois de um resgate bem-sucedido.
+    melhorCaptura: null,
+    capturaPendente: false,
     _spawnOndaAtual: false,
   };
 
@@ -69,6 +74,7 @@ function createHuntReader() {
     if (!raw || typeof raw !== 'object' || !Number.isInteger(raw.id)) return null;
     return {
       id: raw.id,
+      nome: nameOf(raw.nome),
       level: Number.isInteger(raw.level) ? raw.level : null,
       quality: typeof raw.quality === 'number' && Number.isFinite(raw.quality) ? raw.quality : null,
       potency: Number.isInteger(raw.potencia) ? raw.potencia : null,
@@ -78,6 +84,18 @@ function createHuntReader() {
     };
   }
 
+  function ivSumOf(pokemon) {
+    if (!pokemon.ivs || !IVS.every((key) => Number.isInteger(pokemon.ivs[key]))) return null;
+    return IVS.reduce((sum, key) => sum + pokemon.ivs[key], 0);
+  }
+
+  // Mais forte: maior nível; empate vai para a maior soma de IVs.
+  function strongerThan(a, b) {
+    if (!b) return true;
+    if (a.level !== b.level) return a.level > b.level;
+    return (a.ivSum ?? -1) > (b.ivSum ?? -1);
+  }
+
   function replacePokemons(list) {
     const next = new Map();
     for (const raw of list) {
@@ -85,6 +103,22 @@ function createHuntReader() {
       if (!pokemon) continue;
       next.set(pokemon.id, pokemon);
       if (next.size >= 800) break;
+    }
+    if (state.capturaPendente) {
+      state.capturaPendente = false;
+      let novo = null;
+      for (const pokemon of next.values()) {
+        if (state.pokemons.has(pokemon.id) || pokemon.level == null) continue;
+        const candidate = {
+          nome: pokemon.nome,
+          speciesId: pokemon.speciesId,
+          level: pokemon.level,
+          shiny: pokemon.shiny,
+          ivSum: ivSumOf(pokemon),
+        };
+        if (strongerThan(candidate, novo)) novo = candidate;
+      }
+      if (novo && strongerThan(novo, state.melhorCaptura)) state.melhorCaptura = novo;
     }
     state.pokemons = next;
   }
@@ -156,12 +190,15 @@ function createHuntReader() {
   }
 
   function applyTwitch(twitch) {
-    if (twitch.assistindo === false) { state.twitchPct = 0; return; }
-    const current = pct(twitch.pctAtual);
-    const fallback = pct(twitch.pct);
-    if (twitch.assistindo === true) state.twitchPct = current != null ? current : (fallback != null ? fallback : 0);
-    else if (current != null) state.twitchPct = current;
-    else if (fallback != null) state.twitchPct = fallback;
+    if (Object.prototype.hasOwnProperty.call(twitch, 'pct')) state.twitchPctBase = pct(twitch.pct) ?? 0;
+    if (twitch.bonus && typeof twitch.bonus === 'object') {
+      state.twitchXpAte = Number.isInteger(twitch.bonus.xp) && twitch.bonus.xp > 0 ? twitch.bonus.xp : 0;
+    }
+  }
+
+  // O bônus só vale até o fim do prazo, medido no relógio do servidor.
+  function twitchPctNow() {
+    return state.twitchXpAte > Date.now() + state.serverOffsetMs ? state.twitchPctBase : 0;
   }
 
   function applyEstado(estado, initializeHunt) {
@@ -184,7 +221,19 @@ function createHuntReader() {
     if (estado.guild && typeof estado.guild === 'object' && Number.isInteger(estado.guild.boostAte)) {
       state.guildBoostUntil = estado.guild.boostAte;
     }
-    if (estado.twitch && typeof estado.twitch === 'object') applyTwitch(estado.twitch);
+    // welcome traz o estado completo: o bônus anterior não vale antes de aplicar o novo.
+    if (initializeHunt) {
+      state.twitchPctBase = 0;
+      state.twitchXpAte = 0;
+      state.capturaPendente = false;
+    }
+    if (Object.prototype.hasOwnProperty.call(estado, 'twitch')) {
+      if (estado.twitch && typeof estado.twitch === 'object') applyTwitch(estado.twitch);
+      else {
+        state.twitchPctBase = 0;
+        state.twitchXpAte = 0;
+      }
+    }
     if (Number.isInteger(estado.centroLivreEm)) state.centroLivreEm = estado.centroLivreEm;
     if (estado.loja && typeof estado.loja === 'object') {
       if (typeof estado.loja.vip === 'boolean') state.vipFlag = estado.loja.vip;
@@ -210,6 +259,12 @@ function createHuntReader() {
     for (const event of events) {
       if (!event || typeof event !== 'object') continue;
       switchGate.applyEvent(event, slugOf);
+      // Evento de batalha de captura: o formato vem de fonte de terceiros, então só conta o que está claro.
+      if (event.k === 'bola' && event.sucesso === true && typeof event.shiny === 'boolean') {
+        if (event.shiny) state.capturas.shiny += 1;
+        else state.capturas.normal += 1;
+        state.capturaPendente = true;
+      }
       if (event.k === 'hunt') {
         const slug = slugOf(event.slug);
         if (!slug) continue;
@@ -254,6 +309,7 @@ function createHuntReader() {
     applyBattle,
     takeHunts,
     vipNow,
+    twitchPctNow,
     activeSummary,
     isDirty: () => catalogDirty,
     clearDirty: () => { catalogDirty = false; },

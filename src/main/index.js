@@ -6,6 +6,7 @@ const catalog = require('../shared/catalog');
 const { chromeUserAgent } = require('../shared/chrome-ua');
 const { registerLiveAccount } = require('./live-account');
 const { registerLive, start: startLive, stop: stopLive } = require('./live/service');
+const { registerTwitch } = require('./twitch');
 const { installGuest } = require('./live-login');
 const {
   registerGameBrowserLogin,
@@ -17,11 +18,13 @@ const { bundleGamePreload, loadPageSource, installHuntPageHook } = require('./hu
 const { registerHuntReference } = require('./hunt-reference');
 const { createPerfSampler } = require('./perf-sampler');
 const { registerUpdater } = require('./updater');
+const AppBrand = require('../shared/brand');
 
 const UI_PRELOAD = path.join(__dirname, '../preload/ui.js');
 
-app.setName('Mesa');
-const mesaData = path.join(app.getPath('appData'), 'Mesa');
+app.setName(AppBrand.productName);
+if (process.platform === 'win32') app.setAppUserModelId(AppBrand.appId);
+const mesaData = path.join(app.getPath('appData'), AppBrand.dataDirName);
 fs.mkdirSync(mesaData, { recursive: true });
 app.setPath('userData', mesaData);
 const GAME_PRELOAD = bundleGamePreload(mesaData, path.join(__dirname, '../preload'));
@@ -46,11 +49,12 @@ app.commandLine.appendSwitch(
 const gotLock = app.requestSingleInstanceLock();
 let uiContentsId = 0;
 let uiWindow = null;
+let twitchApi = null;
 let deskOpen = true;
 let windowHot = true;
 let deskFocus = null;
 const googleLoginInterceptAt = new Map();
-const GOOGLE_LOGIN_HINT = 'O login do Google não abre dentro da Mesa. Use «Entrar com Google», entre no jogo no navegador e feche-o — o login entra sozinho nesta baía. Se não entrar, use «Já entrei».';
+const GOOGLE_LOGIN_HINT = `O login do Google não abre dentro do ${AppBrand.productName}. Use «Entrar com Google», entre no jogo no navegador e feche-o — o login entra sozinho nesta baía. Se não entrar, use «Já entrei».`;
 const loginBrowserDeps = () => ({
   catalog,
   userData: () => app.getPath('userData'),
@@ -96,6 +100,8 @@ if (!gotLock) {
 }
 
 const cfgFile = () => path.join(app.getPath('userData'), 'mesa-config.json');
+const xpHistoryFile = () => path.join(app.getPath('userData'), 'mesa-xp-history.json');
+const MesaXpHistory = require('../shared/xp-history');
 let cfgMemo;
 let cfgTicketSeen = 0;
 
@@ -228,7 +234,40 @@ ipcMain.handle('cfg:save', (event, data, ticket) => (isUi(event) ? acceptCfg(dat
 ipcMain.on('cfg:flush', (event, data, ticket) => {
   try { event.returnValue = isUi(event) ? acceptCfg(data, ticket) : false; } catch { event.returnValue = false; }
 });
-ipcMain.handle('app:paths', (event) => (isUi(event) ? { config: cfgFile() } : null));
+
+function readXpHistoryFile() {
+  const file = xpHistoryFile();
+  try {
+    return MesaXpHistory.normalize(JSON.parse(fs.readFileSync(file, 'utf8')));
+  } catch {
+    return MesaXpHistory.empty();
+  }
+}
+
+function writeXpHistory(data) {
+  const clean = MesaXpHistory.normalize(data);
+  const file = xpHistoryFile();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    replaceCfgFile(file, JSON.stringify(clean, null, 2));
+    return true;
+  } catch {
+    try {
+      fs.writeFileSync(file, JSON.stringify(clean, null, 2));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
+ipcMain.handle('xp-history:load', (event) => (isUi(event) ? readXpHistoryFile() : null));
+ipcMain.handle('xp-history:save', (event, data) => (isUi(event) ? writeXpHistory(data) : false));
+ipcMain.on('xp-history:flush', (event, data) => {
+  try { event.returnValue = isUi(event) ? writeXpHistory(data) : false; } catch { event.returnValue = false; }
+});
+
+ipcMain.handle('app:paths', (event) => (isUi(event) ? { config: cfgFile(), xpHistory: xpHistoryFile() } : null));
 ipcMain.handle('app:open-external', (event, url) => {
   if (!isUi(event) || typeof url !== 'string') return false;
   let parsed;
@@ -246,6 +285,7 @@ ipcMain.on('bay:prefs', (event) => {
     'cfg-otimizado': cfg.otimizado ? '1' : '0',
     'cfg-night': cfg.night ? '1' : '0',
     'cfg-economia': (!focused || bay.eco) ? '1' : '0',
+    'cfg-ultra': bay.ultra ? '1' : '0',
     'cfg-som': bay.muted ? '0' : '1',
   };
 });
@@ -293,6 +333,7 @@ const perf = createPerfSampler({
   webContents,
   session,
   catalog,
+  twitchPartitions: catalog.twitchPartitions,
   scene: () => ({
     window: windowHot ? 'aberta' : 'minimizada',
     view: deskOpen ? 'mesa' : 'ajustes',
@@ -308,15 +349,17 @@ const perf = createPerfSampler({
 ipcMain.handle('metrics:get', (event) => (isUi(event) ? perf.ramByBay() : []));
 ipcMain.handle('perf:report', (event) => (isUi(event) ? perf.summarize() : null));
 ipcMain.handle('perf:reset', (event) => (isUi(event) ? perf.reset() : null));
+ipcMain.handle('metrics:processes', (event) => (isUi(event) ? perf.processes() : null));
 
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
     height: 1080,
     minWidth: 900,
-    minHeight: 720,
-    backgroundColor: '#171719',
-    title: 'Mesa',
+    minHeight: 520,
+    backgroundColor: '#161719',
+    title: AppBrand.productName,
+    icon: path.join(__dirname, '../assets/brand/icon.ico'),
     autoHideMenuBar: true,
     webPreferences: {
       preload: UI_PRELOAD,
@@ -333,6 +376,10 @@ function createWindow() {
   uiContentsId = win.webContents.id;
   uiWindow = win;
   bindWindowHeat(win);
+  // Fechar a Mesa encerra as janelas escondidas da Twitch, senão elas impediriam o app de sair.
+  win.on('closed', () => {
+    if (twitchApi) twitchApi.encerrar();
+  });
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -384,6 +431,8 @@ if (gotLock) app.whenReady().then(() => {
   const saved = readCfg();
   const blockTrackers = !!(saved || {}).trackers;
   for (const part of catalog.partitions) prepareSession(part, blockTrackers);
+  // Nunca bloqueia rastreadores nas partições da Twitch: a página precisa funcionar como no navegador.
+  for (const part of catalog.twitchPartitions) prepareSession(part, false);
   perf.start();
   createWindow();
   startLive();
@@ -395,7 +444,7 @@ if (gotLock) app.on('before-quit', (event) => {
   stopLive();
   event.preventDefault();
   quitFlushed = true;
-  const parts = catalog.partitions;
+  const parts = catalog.partitions.concat(catalog.twitchPartitions);
   const jobs = [];
   for (const part of parts) {
     const ses = session.fromPartition(part);
@@ -447,15 +496,30 @@ if (gotLock) {
   }, bay);
 }
 
-if (gotLock) registerLive({
-  ipcMain,
-  session,
-  catalog,
-  isUi,
-  app,
-  shell,
-  getUiWindow: () => uiWindow,
-  userData: () => app.getPath('userData'),
-});
+if (gotLock) {
+  twitchApi = registerTwitch({
+    ipcMain,
+    session,
+    BrowserWindow,
+    shell,
+    catalog,
+    isUi,
+    userData: () => app.getPath('userData'),
+    srcDir: path.join(__dirname, '..'),
+    prepareSession: (part) => prepareSession(part, false),
+    prefs: () => {
+      const c = readCfg() || catalog.normalize({});
+      return {
+        tipos: c.twitch.tipos,
+        limiarMin: c.twitch.limiarMin,
+        auto: c.bays.map((b) => b.twitchAuto === true),
+        streams: c.bays.map((b) => b.twitchStreams),
+        canais: c.bays.map((b) => b.twitchCanais),
+        foco: c.bays.map((b) => b.twitchFoco),
+      };
+    },
+  });
+  registerLive({ ipcMain, session, catalog, isUi, app, shell, getUiWindow: () => uiWindow, twitch: twitchApi });
+}
 
 if (gotLock) registerUpdater({ ipcMain, app, isUi });

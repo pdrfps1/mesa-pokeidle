@@ -1,0 +1,870 @@
+/* Tela Automações (Mesa): console de operação e baías. Sistema «Vigília». */
+
+.view.workspace { gap: var(--gap); overflow: hidden; min-height: 0; }
+
+/* Aba Grade do console: quais baías ficam na grade e a disposição. */
+.bay-placed-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 12px;
+  min-width: 0;
+}
+.bay-placed-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  min-width: 0;
+}
+.bay-placed-row .label {
+  justify-content: flex-start;
+  gap: 10px;
+  min-height: 36px;
+  padding: 0;
+  color: var(--text);
+  font-size: var(--fs-body);
+  white-space: nowrap;
+}
+.bay-layout-group {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  min-width: 0;
+  margin-top: 8px;
+}
+.bay-layout-group .join { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.bay-layout-group .join .btn { min-width: 0; padding-inline: 4px !important; gap: 6px; }
+.bay-placed-bar .control-label,
+.away-bar .control-label { flex: none; font-size: var(--fs-label); font-weight: 500; color: var(--text-2); }
+
+.op-card { padding: 0; flex: 0 0 auto; overflow: visible; }
+.bays-pane > .op-card {
+  flex: 0 0 auto !important;
+  flex-grow: 0 !important;
+  min-height: 0;
+  align-self: stretch;
+}
+.op-card.toolbar { border-radius: var(--radius-card); }
+.op-fold-bar,
+.op-col-fold,
+.rail-fold-li { display: none !important; }
+.op-card.is-op-collapsed .op-grid,
+.op-card.is-op-collapsed .away-bar { display: none; }
+/* Invólucro da seção do console: some do layout a partir de 1100px; abaixo disso é a folha sobre as baías. */
+.op-sheet { display: contents; }
+
+.op-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(max-content, 1.15fr) minmax(0, 0.9fr);
+  gap: 0;
+  align-items: stretch;
+  height: auto;
+}
+.op-col-focus .op-col-body,
+.op-col-account .op-col-body {
+  justify-content: flex-start;
+  align-items: stretch;
+}
+.op-col {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  align-self: stretch;
+  padding: 16px;
+  border-right: 1px solid var(--rule-soft);
+}
+.op-col.op-col-focus { min-width: max-content; }
+.op-col:last-child { border-right: none; }
+.op-col-head { display: flex; align-items: center; min-width: 0; flex: none; }
+.op-col-account .op-col-head { display: none; }
+.op-col-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.op-col-body[hidden] { display: none !important; }
+.op-col-title {
+  display: block;
+  font-weight: 600;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+.op-col-title-lg,
+.op-col-title-bay { font-size: var(--fs-body); line-height: 1.2; color: var(--text); }
+
+.op-col-autos { container-type: inline-size; container-name: op-autos; }
+
+.op-head { display: flex; align-items: stretch; min-width: 0; border-bottom: 1px solid var(--rule); }
+.op-tabs { position: relative; display: flex; align-items: flex-end; gap: 20px; padding: 0 16px; flex: 1 1 auto; min-width: 0; }
+.op-fold {
+  flex: none;
+  align-self: center;
+  width: 28px;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  margin-right: 8px;
+  justify-content: center;
+}
+.op-fold svg { width: 16px; height: 16px; display: block; transition: transform var(--dur-ink) var(--ease-drawer); }
+.op-fold[aria-expanded="true"] svg { transform: rotate(-90deg); }
+.op-fold[aria-expanded="false"] svg { transform: rotate(90deg); }
+.op-grid[data-tab] { grid-template-columns: minmax(0, 1fr); }
+.op-grid[data-tab] > .op-col { display: none; border-right: none; }
+.op-grid[data-tab="autos"] > .op-col-autos,
+.op-grid[data-tab="focus"] > .op-col-focus,
+.op-grid[data-tab="account"] > .op-col-account,
+.op-grid[data-tab="grid"] > .op-col-grid { display: flex; animation: mesa-fade var(--dur-fade) var(--ease-out) both; }
+.op-grid[data-tab] .op-col-head { display: none; }
+.op-grid[data-tab] .op-col.op-col-focus { min-width: 0; }
+/* Abaixo de 1100px: o console é só a barra de abas (46px). A seção abre numa folha de 320px sobre as baías,
+   sem mudar o tamanho do jogo; fecha na aba ativa, no chevron, com Esc ou ao clicar fora (shell-fold.js). */
+@media (max-width: 1099px) {
+  .bays-pane { position: relative; }
+  .bays-pane > .op-card { position: static; }
+  .op-head { height: 44px; }
+  .op-sheet {
+    display: block;
+    position: absolute;
+    z-index: 10;
+    top: 54px; /* barra de abas 44 + bordas 2 + respiro 8 */
+    left: 0;
+    width: min(var(--inspector-w), 100%);
+    max-height: calc(100% - 54px);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    background: var(--surface);
+    border: 1px solid var(--rule);
+    border-radius: var(--radius-card);
+    box-shadow: var(--shadow-2);
+    animation: mesa-fade var(--dur-fade) var(--ease-out) both;
+  }
+  .op-card.is-op-collapsed .op-sheet { display: none; }
+  .op-card.is-op-collapsed .op-tab-ink { opacity: 0; }
+}
+
+.op-tab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-body);
+  font-weight: 500;
+  line-height: 1.2;
+  padding: 14px 0 12px;
+  margin-bottom: -1px;
+  min-width: 0;
+  max-width: 18ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: color var(--motion), transform var(--dur-press) var(--ease-out);
+}
+.op-tab:hover { color: var(--text); }
+.op-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: transparent;
+}
+.op-tab:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+.op-tab:active { transform: scale(0.97); }
+.op-tab-ink {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  width: 1px;
+  height: 2px;
+  background: var(--color-accent);
+  transform-origin: 0 50%;
+  transform: translateX(var(--ink-x, 0px)) scaleX(var(--ink-w, 0));
+  transition: transform var(--dur-ink) var(--ease-drawer);
+  pointer-events: none;
+}
+@media (prefers-reduced-motion: reduce) { .op-tab { transition: none; } }
+
+/* Linhas de automação: rótulo à esquerda, chave à direita, 40px de altura, sem ícone nem palavra de estado. */
+.auto-rows { display: flex; flex-direction: column; gap: 0; }
+.auto-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: var(--row-height);
+  min-width: 0;
+}
+.auto-row-label {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+  line-height: 1.3;
+  color: var(--text);
+}
+.auto-row-label-text {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: var(--fs-body);
+  line-height: 1.3;
+  white-space: normal;
+}
+.auto-row-icon { display: none; }
+/* VIP: etiqueta de texto neutra ao lado do rótulo, sem borda e sem cor. */
+.auto-vip-seal {
+  flex: none;
+  padding: 0;
+  border: 0;
+  font-family: var(--font);
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  color: var(--text-3);
+}
+.auto-hunt-status {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: 1.4;
+}
+/* O status do Mapa automático só aparece com ele ligado. */
+.op-col-autos:has(.auto-row-hunt .toggle:not(:checked)) .auto-hunt-status { display: none; }
+
+/* Controle deslizante: rótulo e valor na primeira linha, trilho inteiro embaixo. */
+.limiar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-areas: "label value action" "range range range";
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 6px;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+}
+.limiar-block { width: 100%; margin: 0; overflow: visible; }
+.limiar > span:first-child { grid-area: label; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.limiar > .limiar-range { grid-area: range; }
+.limiar > .num {
+  grid-area: value;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  font-variant-numeric: tabular-nums;
+}
+.limiar > .btn {
+  grid-area: action;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding-inline: 10px !important;
+  font-size: var(--fs-label) !important;
+  box-shadow: none !important;
+}
+
+/* Atalhos do jogo: botões suaves que quebram linha. */
+.game-nav-bar {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+}
+.game-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+}
+.game-nav-btn {
+  flex: 0 0 auto;
+  height: 32px;
+  min-height: 32px;
+  padding-inline: 12px;
+  gap: 6px;
+  border: 0;
+  border-radius: var(--radius-control) !important;
+  background: var(--raised);
+  color: var(--text);
+  font-size: var(--fs-label);
+  font-weight: 500;
+  box-shadow: none;
+  white-space: nowrap;
+}
+.game-nav-btn::before { width: 14px; height: 14px; }
+@media (hover: hover) {
+  .game-nav-btn:hover:not(:disabled) { background: color-mix(in oklch, var(--color-base-content) 8%, var(--raised)); }
+}
+
+/* Mudo, Economia, Ultra: lista vertical, igual às automações. */
+.focus-prefs {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  width: 100%;
+  flex: none;
+  border: 0;
+  padding: 0;
+}
+.focus-pref-cell { min-width: 0; padding: 0; }
+.focus-pref-cell + .focus-pref-cell { border-left: 0; }
+
+.account-actions { display: flex; flex-direction: column; gap: 8px; width: 100%; flex: none; }
+.account-actions .btn { box-shadow: none !important; }
+.account-foot-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: 8px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 0;
+}
+.account-foot-actions .btn {
+  flex: 0 0 auto;
+  min-width: 0;
+  box-shadow: none !important;
+}
+.login-browser-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  line-height: 1.4;
+}
+.login-browser-hint[hidden] { display: none !important; }
+
+.away-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--rule);
+}
+.away-bar[hidden] { display: none !important; }
+
+.bays-pane {
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+  min-width: 0;
+  min-height: 0;
+  flex: 1 1 auto;
+  overflow: visible;
+}
+.bays-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border-radius: var(--radius-card);
+}
+.bays {
+  display: grid;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+  align-content: start;
+  align-items: start;
+}
+.bays[data-layout="grade"] { grid-template-columns: var(--bay-cols, repeat(2, minmax(0, 1fr))); grid-template-rows: var(--bay-rows, repeat(2, auto)); }
+.bays[data-layout="grade"][data-count="1"] { grid-template-columns: var(--bay-cols, minmax(0, 1fr)); grid-template-rows: var(--bay-rows, auto); }
+.bays[data-layout="grade"][data-count="2"] { grid-template-columns: var(--bay-cols, repeat(2, minmax(0, 1fr))); grid-template-rows: var(--bay-rows, auto); }
+.bays[data-layout="grade"][data-count="3"] { grid-template-columns: var(--bay-cols, repeat(2, minmax(0, 1fr))); grid-template-rows: var(--bay-rows, repeat(2, auto)); }
+.bays[data-layout="fila"] { grid-template-columns: var(--bay-cols, repeat(var(--bay-count, 4), minmax(0, 1fr))); grid-template-rows: auto; }
+.bays[data-layout="coluna"] { grid-template-columns: minmax(0, 1fr); grid-template-rows: var(--bay-rows, repeat(var(--bay-count, 4), auto)); }
+
+.bays:not(:has(.bay.is-painted)) {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: min-content;
+  overflow: visible;
+  align-content: start;
+  align-items: start;
+}
+.bays:not(:has(.bay.is-painted))[data-layout="grade"],
+.bays:not(:has(.bay.is-painted))[data-layout="grade"][data-count="1"],
+.bays:not(:has(.bay.is-painted))[data-layout="grade"][data-count="2"],
+.bays:not(:has(.bay.is-painted))[data-layout="grade"][data-count="3"],
+.bays:not(:has(.bay.is-painted))[data-layout="coluna"] {
+  grid-template-rows: auto !important;
+}
+.bays-wrap:not(:has(.bay.is-painted)) .bay-split-sep.is-row {
+  display: none;
+}
+.bays:has(.bay.is-painted) {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.bays:has(.bay.is-painted)[data-layout="grade"],
+.bays:has(.bay.is-painted)[data-layout="grade"][data-count="1"],
+.bays:has(.bay.is-painted)[data-layout="grade"][data-count="2"],
+.bays:has(.bay.is-painted)[data-layout="grade"][data-count="3"] {
+  grid-template-rows: var(--bay-rows, repeat(2, minmax(0, 1fr)));
+}
+.bays:has(.bay.is-painted)[data-layout="fila"] { grid-template-rows: minmax(0, 1fr); }
+.bays:has(.bay.is-painted)[data-layout="coluna"] {
+  grid-template-rows: var(--bay-rows, repeat(var(--bay-count, 4), minmax(0, 1fr)));
+}
+
+/* Divisórias entre baías: régua neutra e discreta em repouso; acento ao passar o ponteiro, focar ou arrastar. */
+.bay-split-sep {
+  position: absolute;
+  z-index: 5;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+.bay-split-sep.is-row { cursor: row-resize; }
+.bay-split-sep::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 1px;
+  background: var(--text-3);
+  opacity: 0.4;
+  transition: opacity var(--motion), background-color var(--motion);
+  pointer-events: none;
+}
+.bay-split-sep:not(.is-row)::after { width: 2px; height: 100%; }
+.bay-split-sep.is-row::after { width: 100%; height: 2px; }
+.bay-split-sep:hover::after,
+.bay-split-sep.is-dragging::after { opacity: 1; background: var(--color-accent); }
+.bay-split-sep:focus-visible { outline: none; }
+.bay-split-sep:focus-visible::after {
+  opacity: 1;
+  background: var(--color-accent);
+  box-shadow: inset 0 0 0 2px var(--color-accent);
+}
+body.is-bay-split-drag { user-select: none; cursor: col-resize; }
+body.is-bay-split-drag.is-bay-split-drag-row { cursor: row-resize; }
+.bay.is-span { grid-column: 1 / -1; }
+.bay[hidden] { display: none !important; }
+
+/* Baía: painel com o jogo. O estado é um ponto antes do nome; a seleção é a borda em acento e o véu no cabeçalho. */
+.bay {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  align-self: start;
+  height: auto;
+  max-height: none;
+  flex: none;
+  container: bay / inline-size;
+  --lamp: var(--lamp-off);
+}
+.bay[data-tone="live"] { --lamp: var(--lamp-live); }
+.bay[data-tone="wait"] { --lamp: var(--lamp-wait); }
+.bay[data-tone="bad"] { --lamp: var(--lamp-bad); }
+.bay.is-painted {
+  max-height: none;
+  align-self: stretch;
+  height: 100%;
+  min-height: 0;
+}
+.bay.is-selected {
+  border-color: color-mix(in oklch, var(--color-accent) 75%, transparent) !important;
+}
+.bay.is-selected .bay-top { background: var(--accent-wash); }
+
+/* Cabeçalho numa linha: [ponto] nome · estado ......... XP/h [ações]. */
+.bay-top {
+  display: flex;
+  flex-flow: row wrap;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 2px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  cursor: pointer;
+  flex: none;
+  transition: background-color var(--motion);
+}
+.bay-top:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-accent); }
+.bay-head { display: contents; }
+.bay-title-row {
+  order: 1;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.bay-title-row::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--lamp);
+}
+.bay[data-tone="wait"] .bay-title-row::before { background: transparent; box-shadow: inset 0 0 0 2px var(--lamp-wait); }
+.bay[data-tone="off"] .bay-title-row::before { background: transparent; box-shadow: inset 0 0 0 1.5px var(--lamp-off); }
+.bay-name {
+  min-width: 0;
+  flex: 0 1 auto;
+  font-size: var(--fs-name);
+  font-weight: 600;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bay-hunt {
+  order: 4;
+  flex: 1 0 100%;
+  min-width: 0;
+  padding-left: 16px;
+  color: var(--text-2);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bay-hunt[hidden] { display: none !important; }
+/* Estado: palavra neutra. Só parada ou caiu ganha cor. */
+.bay .bay-status {
+  background: transparent !important;
+  background-image: none !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  height: auto !important;
+  padding: 0 !important;
+  color: var(--text-2) !important;
+  font-size: var(--fs-label);
+  font-weight: 400;
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+.bay .bay-status[data-tone="bad"] { color: var(--lamp-bad) !important; font-weight: 600; }
+/* Ações: só ícone, alvo de 28px, com o texto como nome acessível. Aparecem na baía selecionada, no hover e no foco. */
+.bay-actions {
+  order: 3;
+  display: flex;
+  flex-flow: row nowrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 2px;
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 0;
+  margin-left: 0;
+  position: static;
+}
+.bay-actions .btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  justify-content: center;
+  font-size: 0 !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  color: var(--text-2) !important;
+  box-shadow: none !important;
+  transition: opacity var(--motion), background-color var(--motion), color var(--motion);
+}
+.bay-actions .btn::before { width: 16px; height: 16px; -webkit-mask-size: 16px 16px; mask-size: 16px 16px; }
+.bay-actions .btn.btn-primary {
+  width: auto;
+  padding-inline: 12px !important;
+  gap: 6px !important;
+  font-size: var(--fs-label) !important;
+  background: var(--color-primary) !important;
+  color: var(--color-primary-content) !important;
+}
+@media (hover: hover) {
+  .bay-actions .btn:not(.btn-primary):hover:not(:disabled) { background: var(--raised) !important; color: var(--text) !important; }
+  .bay:not(.is-selected):not(:hover):not(:focus-within) .bay-actions .btn:not(.btn-primary) { opacity: 0; }
+}
+/* Estatísticas: só XP/h no cabeçalho. Nível e Ouro voltam em baía larga; RAM e o resto ficam na Espera. */
+.bay-stats {
+  order: 2;
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  flex: 0 0 auto;
+  width: auto;
+  position: static;
+  margin: 0;
+  padding: 0;
+}
+.bay-stat { display: none; flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; }
+.bay-stat:nth-child(2) { display: flex; }
+.bay-stat .k { color: var(--text-2); font-size: var(--fs-label); display: inline-flex; align-items: center; white-space: nowrap; }
+.stat-icon { display: none; }
+.bay-stat b {
+  color: var(--text);
+  font-size: var(--fs-body);
+  font-weight: 600;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.bay-stage {
+  position: relative;
+  flex: 0 0 auto;
+  height: 0;
+  min-height: 0;
+  max-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+}
+.bay.is-painted .bay-stage:not(.is-empty) {
+  flex: 1 1 auto;
+  height: auto;
+  max-height: none;
+  min-height: 0;
+  background-color: var(--stage);
+  background-image: none;
+  overflow: hidden;
+  border-top: 0;
+}
+.bay-stage.is-empty,
+.bay.is-painted .bay-stage.is-empty {
+  flex: 0 0 auto !important;
+  height: 0 !important;
+  min-height: 0 !important;
+  max-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  overflow: hidden !important;
+}
+.bay-stage.is-empty { border-radius: 0; }
+.bay-empty {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+.bay-stage webview {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  max-width: none;
+  max-height: none;
+}
+.rename {
+  height: 28px;
+  width: min(16ch, 100%);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--color-accent);
+  font-size: var(--fs-name);
+  font-weight: 600;
+  border-radius: 0;
+}
+
+@media (max-width: 700px) {
+  .bays,
+  .bays[data-layout="grade"],
+  .bays[data-layout="fila"],
+  .bays[data-layout="coluna"] {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: none;
+  }
+  .bay-split-sep { display: none !important; }
+  .bay-stage { height: 0; max-height: 0; min-height: 0; flex: 0 0 auto; }
+  .bay.is-painted .bay-stage:not(.is-empty) {
+    display: block;
+    flex: 1 1 auto;
+    height: auto;
+    max-height: none;
+    min-height: 180px;
+  }
+  .view.workspace { overflow: visible; }
+}
+
+/* Livre: cada baía tem a própria largura (colunas de 12) e altura. */
+.bays-wrap > .bays[data-layout="livre"] {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-rows: none;
+  grid-auto-rows: min-content;
+  align-content: start;
+  align-items: start;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+.bays-wrap > .bays[data-layout="livre"] > .bay {
+  grid-column: span var(--bay-span, 6);
+  height: var(--bay-h, auto);
+  max-height: none;
+  align-self: start;
+  min-width: 0;
+}
+.bays-wrap > .bays[data-layout="livre"] > .bay.is-painted {
+  height: var(--bay-h, 340px);
+  align-self: start;
+}
+/* Reserva a faixa da alça embaixo do jogo, para a alça não ficar sob o webview. */
+.bays-wrap > .bays[data-layout="livre"] > .bay.is-painted .bay-stage:not(.is-empty) {
+  margin-bottom: 20px;
+}
+.bays-wrap > .bays[data-layout="livre"] > .bay .bay-grip { display: block; }
+
+.bay-grip {
+  display: none;
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 18px;
+  height: 18px;
+  z-index: 3;
+  cursor: nwse-resize;
+  touch-action: none;
+  border-radius: 0 0 var(--radius-card) 0;
+}
+.bay-grip::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 8px;
+  height: 8px;
+  border-right: 2px solid var(--text-3);
+  border-bottom: 2px solid var(--text-3);
+  transition: border-color var(--motion);
+}
+.bay-grip:hover::after,
+.bay-grip:focus-visible::after,
+.bay-grip.is-dragging::after { border-color: var(--color-accent); }
+.bay-grip:focus-visible { outline: 2px solid var(--color-accent); outline-offset: -2px; }
+body.is-bay-grip-drag { user-select: none; cursor: nwse-resize; }
+
+/* Tamanho da baía em foco. Fora do Livre ficam só a nota e "Usar Livre"; os controles voltam no Livre. */
+.bay-size {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-top: 0;
+}
+.bay-size.is-off > .bay-size-row:last-child,
+.bay-size.is-off .bay-size-name,
+.bay-size.is-off .bay-size-chips { display: none; }
+.bay-size.is-off .bay-size-row > .btn { margin-left: 0; }
+.bay-size-note { margin: 0; font-size: var(--fs-label); line-height: 1.4; color: var(--text-2); }
+.bay-size-note[hidden] { display: none !important; }
+.bay-size-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.bay-size-name {
+  flex: none;
+  width: 56px;
+  font-size: var(--fs-label);
+  font-weight: 500;
+  color: var(--text-2);
+}
+.bay-size-chips { flex-wrap: wrap; }
+.bay-size-row .limiar-range { flex: 1 1 120px; }
+.bay-size-out {
+  flex: none;
+  min-width: 6ch;
+  text-align: right;
+  font-family: var(--font);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  color: var(--text);
+}
+.bay-size-row > .btn {
+  flex: none;
+  height: 28px !important;
+  min-height: 28px !important;
+  padding-inline: 10px !important;
+  font-size: var(--fs-label) !important;
+  box-shadow: none !important;
+  margin-left: auto;
+}
+.bay-size-row > .btn[hidden] { display: none !important; }
+
+/* Abaixo de 700px, o Livre empilha: uma baía por linha, altura pelo conteúdo. */
+@media (max-width: 700px) {
+  .bays-wrap > .bays[data-layout="livre"] { grid-template-columns: minmax(0, 1fr); }
+  .bays-wrap > .bays[data-layout="livre"] > .bay { grid-column: 1 / -1; height: auto; }
+  .bays-wrap > .bays[data-layout="livre"] > .bay.is-painted { height: auto; }
+}
+
+/* A partir de 1100px: o console é a coluna à esquerda (inspetor), recolhível a 48px. */
+@media (min-width: 1100px) {
+  .bays-pane {
+    display: grid;
+    grid-template-columns: var(--inspector-w) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-areas: "op bays";
+    gap: 0 var(--gap);
+  }
+  .bays-pane > .bays-wrap { grid-area: bays; }
+  .bays-pane > .op-card { grid-area: op; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+  .op-head { position: sticky; top: 0; z-index: 2; background: var(--surface); border-radius: var(--radius-card) var(--radius-card) 0 0; }
+  .op-fold[aria-expanded="true"] svg { transform: rotate(180deg); }
+  .op-fold[aria-expanded="false"] svg { transform: none; }
+  .op-col.op-col-focus { min-width: 0; }
+  .bays-pane:has(> .op-card.is-op-collapsed) { grid-template-columns: 48px minmax(0, 1fr); }
+  .op-card.is-op-collapsed .op-tabs { display: none; }
+  .op-card.is-op-collapsed .op-head { justify-content: center; border-bottom: 0; background: transparent; padding-top: 8px; }
+  .op-card.is-op-collapsed .op-fold { margin: 0; }
+}
+
+/* Container queries da baía: o cabeçalho segue a largura da própria baía, não a da janela. */
+@container bay (max-width: 299px) {
+  .bay-stats { order: 4; flex-basis: 100%; padding-left: 16px; }
+  .bay-hunt { order: 5; }
+}
+@container bay (min-width: 680px) {
+  .bay-stat:nth-child(1),
+  .bay-stat:nth-child(3) { display: flex; }
+}

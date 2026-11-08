@@ -1,0 +1,105 @@
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@import "../../styles/theme.css";
+@import "../../styles/typography.css";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@source "../../components/**/*.tsx";
+@source "../**/*.tsx";
+
+/* Utilities de sombra copiadas de styles/globals.css (só as usadas por
+ * toast, notification, modal e button). O globals.css inteiro não é importado. */
+@utility shadow-xs {
+  &:where(.dark .shadow-xs) {
+    --tw-shadow: var(--shadow-xs);
+  }
+}
+
+@utility shadow-dropdown {
+  &:where(.dark .shadow-dropdown) {
+    --tw-shadow: var(--shadow-dropdown);
+  }
+}
+
+/* Ponte para os tokens da Mesa (DaisyUI em src/renderer/theme.css e :root em
+ * src/renderer/app.css). Fica sem layer para vencer os tokens do BoardUI.
+ * Seletor html:root (e html.dark) porque html sozinho perde para :root e .dark. */
+html:root,
+html.dark {
+  /* Fundos: chão, painel e elevado */
+  --color-background-full: var(--color-base-100);
+  --color-background-primary-default: var(--color-base-200);
+  --color-background-inner-default: var(--color-base-200);
+  --color-background-primary-hover: color-mix(in oklab, var(--color-base-content) 6%, var(--color-base-200));
+  --color-background-primary-active: color-mix(in oklab, var(--color-base-content) 9%, var(--color-base-200));
+  --color-background-primary-disabled: var(--color-base-200);
+  --color-background-secondary-default: var(--color-base-300);
+  --color-background-secondary-hover: color-mix(in oklab, var(--color-base-content) 6%, var(--color-base-300));
+  --color-background-tertiary-default: var(--color-base-300);
+  --color-background-tertiary-hover: color-mix(in oklab, var(--color-base-content) 9%, var(--color-base-300));
+  --color-input-disabled-background: var(--color-base-200);
+
+  /* Texto em três níveis */
+  --color-text-primary: var(--color-base-content);
+  --color-text-secondary: var(--text-2);
+  --color-text-tertiary: var(--text-3);
+
+  /* Réguas */
+  --color-separator-border: var(--rule);
+  --color-separator-border-strong: var(--rule);
+  --color-border-button-default: var(--rule);
+  --color-border-table: var(--rule-soft);
+
+  /* Foco */
+  --color-border-focus-ring: var(--color-primary);
+
+  /* Acento: 500 é o acento da Mesa, os outros degraus saem dele */
+  --color-accent-50: color-mix(in oklab, var(--color-primary) 8%, white);
+  --color-accent-100: color-mix(in oklab, var(--color-primary) 16%, white);
+  --color-accent-200: color-mix(in oklab, var(--color-primary) 28%, white);
+  --color-accent-300: color-mix(in oklab, var(--color-primary) 45%, white);
+  --color-accent-400: color-mix(in oklab, var(--color-primary) 70%, white);
+  --color-accent-500: var(--color-primary);
+  --color-accent-600: color-mix(in oklab, var(--color-primary) 85%, black);
+  --color-accent-700: color-mix(in oklab, var(--color-primary) 70%, black);
+  --color-accent-800: color-mix(in oklab, var(--color-primary) 55%, black);
+  --color-accent-900: color-mix(in oklab, var(--color-primary) 40%, black);
+  --color-accent-950: color-mix(in oklab, var(--color-primary) 25%, black);
+
+  /* Botão primário: cor sólida de acento, sem degradê */
+  --gradient-button-primary-default: linear-gradient(var(--color-primary), var(--color-primary));
+  --gradient-button-primary-hover: linear-gradient(var(--color-primary), var(--color-primary));
+  --gradient-button-primary-active: linear-gradient(var(--color-primary), var(--color-primary));
+
+  /* Tipografia da Mesa */
+  --font-inter: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+}
+
+/* Hover metálico nos botões da ilha BoardUI (#mesa-react).
+ * Exceção pedida pelo usuário ao MASTER.md (que proíbe degradê fora deste pedido).
+ * Degradê derivado de --color-primary: faixa de luz em diagonal sobre um leve
+ * gradiente cinza-azulado. Sem sombra colorida. Sem layer, como a ponte acima. */
+#mesa-react button:not(:disabled):hover {
+  background-image:
+    linear-gradient(115deg,
+      transparent 0%,
+      color-mix(in oklab, white 55%, transparent) 40%,
+      color-mix(in oklab, white 22%, transparent) 50%,
+      transparent 62%),
+    linear-gradient(180deg,
+      color-mix(in oklab, var(--color-primary) 72%, white) 0%,
+      var(--color-primary) 50%,
+      color-mix(in oklab, var(--color-primary) 75%, black) 100%);
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, white 22%, transparent);
+  transition: background-image 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #mesa-react button:not(:disabled):hover {
+    transition: none;
+  }
+}
